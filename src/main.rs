@@ -1,6 +1,7 @@
 mod lexer;
 mod ast;
 mod parser;
+mod types;
 
 use parser::Parser;
 

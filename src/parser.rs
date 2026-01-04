@@ -2,7 +2,7 @@ use core::panic;
 
 use logos::Logos;
 use crate::lexer::Token;
-use crate::ast::{BinaryOp, Expr, Statement, Type, UnaryOp};
+use crate::ast::{BinaryOp, Expr, Statement, Type, TypeKind, UnaryOp};
 
 pub struct Parser<'a> {
     lexer: logos::Lexer<'a, Token>,
@@ -93,19 +93,11 @@ impl<'a> Parser<'a> {
 
     pub fn prefix_binding_power(op: &Token) -> Option<u8> {
         match op {
-            Token::Minus | Token::Not => Some(23),
+            Token::Minus | Token::Not | Token::Raise => Some(23),
             _ => None,
         }
     }
 
-    pub fn postfix_binding_power(op: &Token) -> Option<u8> {
-        match op {
-            Token::LParenthesis => Some(25),
-            Token::Access => Some(25),
-            Token::LBracket => Some(25),
-            _ => None,
-        }
-    }
 
     fn token_to_binary_op(token: &Token) -> BinaryOp {
         match token {
@@ -172,13 +164,14 @@ impl<'a> Parser<'a> {
                 self.expect(&Token::RParenthesis);
                 expr
             }
-            Some(Token::Not) | Some(Token::Minus) => {
+            Some(Token::Not) | Some(Token::Minus) | Some(Token::Raise) => {
                 let op = self.advance().unwrap();
                 let rbp = Parser::prefix_binding_power(&op).unwrap();
                 let expr = self.parse_expression(rbp);
                 match op {
                     Token::Minus => Expr::Unary { op: UnaryOp::Minus, expr: Box::new(expr) },
                     Token::Not => Expr::Unary { op: UnaryOp::Not, expr: Box::new(expr) },
+                    Token::Raise => Expr::Unary { op: UnaryOp::Raise, expr: Box::new(expr) },
                     _ => unreachable!(),
                 }
             }
@@ -312,32 +305,19 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type(&mut self) -> Type {
-        if self.check(&Token::Identifier) {
+        let kind = if self.check(&Token::Identifier) {
             let name = self.current_slice.clone();
             self.advance();
-            return Type::Primitive { 
-                name, 
-                errorable: self.match_token(&Token::Errorable), 
-                nullable: self.match_token(&Token::Nullable)  
-            };
+            TypeKind::Primitive(name)
         } else if self.match_token(&Token::LBrace) {
-            let key = Box::new(self.parse_type());
+            let element = Box::new(self.parse_type());
             if self.match_token(&Token::Colon) {
                 let value = Box::new(self.parse_type());
                 self.expect(&Token::RBrace);
-                return Type::Dict { 
-                    key_type: key, 
-                    value_type: value, 
-                    errorable: self.match_token(&Token::Errorable), 
-                    nullable: self.match_token(&Token::Nullable)  
-                };
+                TypeKind::Dict { key_type: element, value_type: value }
             } else {
                 self.expect(&Token::RBrace);
-                return Type::List { 
-                    element_type: key, 
-                    errorable: self.match_token(&Token::Errorable), 
-                    nullable: self.match_token(&Token::Nullable)  
-                };
+                TypeKind::List(element)
             }
         } else if self.match_token(&Token::LParenthesis) {
             // (int, int : int)
@@ -351,14 +331,15 @@ impl<'a> Parser<'a> {
             self.expect(&Token::Colon);
             let return_type = Box::new(self.parse_type());
             self.expect(&Token::RParenthesis);
-            return Type::Function { 
-                param_types, 
-                return_type, 
-                errorable: self.match_token(&Token::Errorable), 
-                nullable: self.match_token(&Token::Nullable)  
-            };
+            TypeKind::Function { param_types, return_type }
         } else {
             panic!("Unexpected token in type annotation: {:?}", self.peek());
+        };
+
+        Type {
+            kind,
+            nullable: self.match_token(&Token::Nullable),
+            errorable: self.match_token(&Token::Errorable),
         }
     }
 
@@ -441,12 +422,6 @@ impl<'a> Parser<'a> {
         Statement::Continue
     }
 
-    fn parse_raise_statement(&mut self) -> Statement {
-        self.expect(&Token::Raise);
-        let expr = self.parse_expression(0);
-        self.expect(&Token::Semicolon);
-        Statement::Raise(Box::new(expr))
-    }
 
     fn parse_if_statement(&mut self) -> Statement {
         self.expect(&Token::If);
@@ -527,13 +502,7 @@ impl<'a> Parser<'a> {
 
             self.expect(&Token::Colon);
 
-            let field_type = if let Some(Token::Identifier) = self.peek() {
-                let field_type = self.current_slice.clone();
-                self.advance();
-                field_type
-            } else {
-                panic!("Expected field type in struct definition, found {:?}", self.peek());
-            };
+            let field_type = self.parse_type();
 
             fields.push((field_name, field_type));
 
@@ -556,6 +525,7 @@ impl<'a> Parser<'a> {
             panic!("Expected identifier after 'error', found {:?}", self.peek());
         };
 
+        self.expect(&Token::Semicolon);
         Statement::Error { name }
     }
 
@@ -643,7 +613,6 @@ impl<'a> Parser<'a> {
             Some(Token::Return) => self.parse_return_statement(),
             Some(Token::Break) => self.parse_break_statement(),
             Some(Token::Continue) => self.parse_continue_statement(),
-            Some(Token::Raise) => self.parse_raise_statement(),
             Some(Token::If) => self.parse_if_statement(),
             Some(Token::For) => self.parse_for_statement(),
             Some(Token::While) => self.parse_while_statement(),

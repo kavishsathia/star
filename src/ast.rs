@@ -25,14 +25,24 @@ pub enum BinaryOp {
 pub enum UnaryOp {
     Not,
     Minus,
+    Raise,
 }
 
-#[derive(Debug)]
-pub enum Type {
-    Primitive { name: String, nullable: bool, errorable: bool },
-    List { element_type: Box<Type>, nullable: bool, errorable: bool },
-    Dict { key_type: Box<Type>, value_type: Box<Type>, nullable: bool, errorable: bool },
-    Function { param_types: Vec<Type>, return_type: Box<Type>, nullable: bool, errorable: bool },
+#[derive(Debug, Clone, PartialEq)]
+pub struct Type {
+    pub kind: TypeKind,
+    pub nullable: bool,
+    pub errorable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeKind {
+    Null,     // only assignable to nullable types
+    Unknown,  // assignable to any type (for empty collections)
+    Primitive(String),
+    List(Box<Type>),
+    Dict { key_type: Box<Type>, value_type: Box<Type> },
+    Function { param_types: Vec<Type>, return_type: Box<Type> },
 }
 
 #[derive(Debug)]
@@ -64,12 +74,11 @@ pub enum Statement {
     Return(Option<Box<Expr>>),
     Break,
     Continue,
-    Raise(Box<Expr>),
     If { condition: Box<Expr>, consequent: Vec<Statement>, alternate: Option<Vec<Statement>> },
     For { initializer: Box<Statement>, condition: Box<Expr>, increment: Box<Statement>, body: Vec<Statement> },
     While { condition: Box<Expr>, body: Vec<Statement> },
     Function { name: String, params: Vec<(String, Type)>, return_type: Type, body: Vec<Statement> },
-    Struct { name: String, fields: Vec<(String, String)> },
+    Struct { name: String, fields: Vec<(String, Type)> },
     Error {name: String},
     Match { expr: Box<Expr>, arms: Vec<(String, Vec<Statement>)> },
 }
