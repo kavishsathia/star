@@ -2,63 +2,26 @@ mod lexer;
 mod ast;
 mod parser;
 mod types;
+mod codegen;
 
 use parser::Parser;
-use types::TypeChecker;
+use codegen::Codegen;
 
 fn main() {
-    // Test statement type checking
-    let test_stmts = vec![
-        // Let bindings
-        ("let x: integer = 5;", true),
-        ("let y: float = 3.14;", true),
-        ("let s: {string} = {\"hello\"};", true),
-        ("let b: boolean = true;", true),
-        ("let n: integer? = null;", true),
-        ("let bad: integer = \"oops\";", false),
+    let source = "1 + 2 * 3";
 
-        // Const bindings
-        ("const PI: float = 3.14;", true),
-        ("const BAD: integer = true;", false),
+    println!("Compiling: {}", source);
 
-        // If statements
-        ("if true { 1 + 2; }", true),
-        ("if 1 { 1 + 2; }", false),
+    let mut parser = Parser::new(source);
+    let expr = parser.parse_expression(0);
 
-        // While statements
-        ("while true { 1 + 2; }", true),
-        ("while 1 { 1 + 2; }", false),
+    println!("AST: {:?}", expr);
 
-        // Functions
-        ("fn add(a: integer, b: integer): integer { return a + b; }", true),
-        ("fn bad(a: integer): integer { return true; }", false),
+    let mut codegen = Codegen::new();
+    let wasm_bytes = codegen.compile(&expr);
 
-        // Structs
-        ("struct Point { x: integer, y: integer }", true),
-    ];
-
-    for (source, should_pass) in test_stmts {
-        println!("Testing: {}", source);
-        let mut parser = Parser::new(source);
-        let stmt = parser.parse_statement();
-
-        let mut checker = TypeChecker::new();
-        match checker.check_stmt(&stmt) {
-            Ok(()) => {
-                if should_pass {
-                    println!("  OK\n");
-                } else {
-                    println!("  UNEXPECTED OK (should have failed)\n");
-                }
-            }
-            Err(e) => {
-                if !should_pass {
-                    println!("  OK (expected error: {})\n", e.message);
-                } else {
-                    println!("  UNEXPECTED ERROR: {}\n", e.message);
-                }
-            }
-        }
-    }
+    std::fs::write("output.wasm", &wasm_bytes).unwrap();
+    println!("Wrote {} bytes to output.wasm", wasm_bytes.len());
+    println!("\nRun with: wasmtime output.wasm --invoke main");
 }
 
