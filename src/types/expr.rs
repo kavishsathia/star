@@ -1,94 +1,7 @@
-use std::{collections::{HashMap, HashSet}, mem::discriminant};
-use crate::ast::{BinaryOp, Expr, Statement, Type, TypeKind, UnaryOp};
-
-#[derive(Debug)]
-pub struct TypeError {
-    pub message: String,
-}
-
-impl TypeError {
-    pub fn new(message: impl Into<String>) -> Self {
-        TypeError { message: message.into() }
-    }
-}
-
-pub struct TypeChecker {
-    scopes: Vec<HashMap<String, Type>>,
-    structs: HashMap<String, Vec<(String, Type)>>,
-    errors: HashSet<String>,
-    current_return_type: Option<Type>,
-}
+use crate::ast::{BinaryOp, Expr, Type, TypeKind, UnaryOp};
+use super::{TypeChecker, TypeError};
 
 impl TypeChecker {
-    pub fn new() -> Self {
-        TypeChecker {
-            scopes: vec![HashMap::new()],
-            structs: HashMap::new(),
-            errors: HashSet::new(),
-            current_return_type: None,
-        }
-    }
-
-
-    fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
-    }
-
-    fn pop_scope(&mut self) {
-        self.scopes.pop();
-    }
-
-    fn define(&mut self, name: String, ty: Type) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, ty);
-        }
-    }
-
-    fn lookup(&self, name: &str) -> Option<&Type> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(ty) = scope.get(name) {
-                return Some(ty);
-            }
-        }
-        None
-    }
-
-
-    fn types_equal(&self, a: &Type, b: &Type) -> bool {
-        return a == b;
-    }
-
-    fn is_assignable(&self, from: &Type, to: &Type) -> bool {
-        if from.kind == TypeKind::Null {
-            return to.nullable;
-        }
-        
-        if from.kind == TypeKind::Unknown {
-            return (from.nullable == to.nullable || to.nullable)
-                && (from.errorable == to.errorable || to.errorable);
-        }
-        
-        from.kind == to.kind 
-            && (from.nullable == to.nullable || to.nullable) 
-            && (from.errorable == to.errorable || to.errorable)
-    }
-
-    fn is_numeric(&self, ty: &Type) -> bool {
-        if ty.kind != TypeKind::Primitive("integer".to_string()) 
-        && ty.kind != TypeKind::Primitive("float".to_string()) {
-            return false;
-        }
-        true
-    }
-
-    fn is_boolean(&self, ty: &Type) -> bool {
-        if ty.kind != TypeKind::Primitive("boolean".to_string()) {
-            return false;
-        }
-        true
-    }
-
-
     pub fn check_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
         match expr {
             Expr::Null => Ok(Type {
@@ -130,7 +43,7 @@ impl TypeChecker {
                     Some(ty) => Ok(ty.clone()),
                     None => Err(TypeError::new(format!("Undefined identifier '{}'", name))),
                 }
-            }   
+            }
             Expr::List(elements) => {
                 if elements.is_empty() {
                     return Ok(Type {
@@ -164,7 +77,7 @@ impl TypeChecker {
             Expr::Dict(pairs) => {
                 if pairs.is_empty() {
                     return Ok(Type {
-                        kind: TypeKind::Dict { 
+                        kind: TypeKind::Dict {
                             key_type: Box::new(Type {
                                 kind: TypeKind::Unknown,
                                 nullable: false,
@@ -205,7 +118,7 @@ impl TypeChecker {
                     }
 
                     Ok(Type {
-                        kind: TypeKind::Dict { 
+                        kind: TypeKind::Dict {
                             key_type: Box::new(first_key_type),
                             value_type: Box::new(first_value_type),
                         },
@@ -354,7 +267,7 @@ impl TypeChecker {
         }
     }
 
-    fn check_binary(&mut self, left: &Expr, op: &BinaryOp, right: &Expr) -> Result<Type, TypeError> {
+    pub fn check_binary(&mut self, left: &Expr, op: &BinaryOp, right: &Expr) -> Result<Type, TypeError> {
         let left_ty = self.check_expr(left)?;
         let right_ty = self.check_expr(right)?;
 
@@ -438,7 +351,7 @@ impl TypeChecker {
         }
     }
 
-    fn check_unary(&mut self, op: &UnaryOp, expr: &Expr) -> Result<Type, TypeError> {
+    pub fn check_unary(&mut self, op: &UnaryOp, expr: &Expr) -> Result<Type, TypeError> {
         let expr_ty = self.check_expr(expr)?;
 
         match op {
@@ -467,58 +380,5 @@ impl TypeChecker {
                 })
             }
         }
-    }
-
-    pub fn check_stmt(&mut self, stmt: &Statement) -> Result<(), TypeError> {
-        match stmt {
-            Statement::Expr(expr) => {
-                self.check_expr(expr)?;
-                Ok(())
-            }
-            Statement::Let { name, value, type_annotation } => {
-                todo!()
-            }
-            Statement::Const { name, value, type_annotation } => {
-                todo!()
-            }
-            Statement::Return(expr) => {
-                todo!()
-            }
-            Statement::Break => {
-                Ok(())
-            }
-            Statement::Continue => {
-                Ok(())
-            }
-            Statement::If { condition, consequent, alternate } => {
-                todo!()
-            }
-            Statement::For { initializer, condition, increment, body } => {
-                todo!()
-            }
-            Statement::While { condition, body } => {
-                todo!()
-            }
-            Statement::Function { name, params, return_type, body } => {
-                todo!()
-            }
-            Statement::Struct { name, fields } => {
-                todo!()
-            }
-            Statement::Error { name } => {
-                todo!()
-            }
-            Statement::Match { expr, arms } => {
-                todo!()
-            }
-        }
-    }
-
-
-    pub fn check_program(&mut self, statements: &[Statement]) -> Result<(), TypeError> {
-        for stmt in statements {
-            self.check_stmt(stmt)?;
-        }
-        Ok(())
     }
 }

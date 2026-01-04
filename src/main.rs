@@ -4,46 +4,61 @@ mod parser;
 mod types;
 
 use parser::Parser;
+use types::TypeChecker;
 
 fn main() {
-    let source = r#"
-        fn add(a: int, b: int): int {
-            return a + b;
-        }
+    // Test statement type checking
+    let test_stmts = vec![
+        // Let bindings
+        ("let x: integer = 5;", true),
+        ("let y: float = 3.14;", true),
+        ("let s: {string} = {\"hello\"};", true),
+        ("let b: boolean = true;", true),
+        ("let n: integer? = null;", true),
+        ("let bad: integer = \"oops\";", false),
 
-        let x: int = add(1, 2);
-        const PI: float = 3.14;
+        // Const bindings
+        ("const PI: float = 3.14;", true),
+        ("const BAD: integer = true;", false),
 
-        if x > 0 {
-            let y: int! = x * 2;
-        } else {
-            let y: int = 0;
-        }
+        // If statements
+        ("if true { 1 + 2; }", true),
+        ("if 1 { 1 + 2; }", false),
 
-        for let i: int = 0; i < 10; i = i + 1; {
-            print(i);
-        }
+        // While statements
+        ("while true { 1 + 2; }", true),
+        ("while 1 { 1 + 2; }", false),
 
-        struct Point {
-            x: int,
-            y: int
-        }
+        // Functions
+        ("fn add(a: integer, b: integer): integer { return a + b; }", true),
+        ("fn bad(a: integer): integer { return true; }", false),
 
-        let p: Point = new Point { x: 1, y: 2 };
+        // Structs
+        ("struct Point { x: integer, y: integer }", true),
+    ];
 
-        let val: int = maybeNull??;
-        let val2: int = maybeError!!;
-        let val3: int = maybeBoth!?!?;
-
-        while x > 0 {
-            x = x - 1;
-        }
-    "#;
-
-    let mut parser = Parser::new(source);
-    while !parser.at_end() {
+    for (source, should_pass) in test_stmts {
+        println!("Testing: {}", source);
+        let mut parser = Parser::new(source);
         let stmt = parser.parse_statement();
-        println!("{:#?}\n", stmt);
+
+        let mut checker = TypeChecker::new();
+        match checker.check_stmt(&stmt) {
+            Ok(()) => {
+                if should_pass {
+                    println!("  OK\n");
+                } else {
+                    println!("  UNEXPECTED OK (should have failed)\n");
+                }
+            }
+            Err(e) => {
+                if !should_pass {
+                    println!("  OK (expected error: {})\n", e.message);
+                } else {
+                    println!("  UNEXPECTED ERROR: {}\n", e.message);
+                }
+            }
+        }
     }
 }
 
