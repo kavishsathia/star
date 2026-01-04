@@ -1,8 +1,8 @@
 use wasm_encoder::{
     CodeSection, ExportSection, Function, FunctionSection,
-    Instruction, Module, TypeSection, ValType,
+    Instruction, Module, TypeSection,
 };
-use crate::ast::{Expr, BinaryOp, UnaryOp};
+use crate::ast::{Expr, BinaryOp, UnaryOp, Statement};
 
 pub struct Codegen {}
 
@@ -11,13 +11,12 @@ impl Codegen {
         Codegen {}
     }
 
-    pub fn compile(&mut self, expr: &Expr) -> Vec<u8> {
+    pub fn compile(&mut self, stmts: &[Statement]) -> Vec<u8> {
         let mut module = Module::new();
 
         let mut types = TypeSection::new();
-        types.ty().function(vec![], vec![ValType::I64]); // () -> i64 for now
+        types.ty().function(vec![], vec![]); // () -> () for statements
         module.section(&types);
-
 
         let mut functions = FunctionSection::new();
         functions.function(0);
@@ -30,7 +29,9 @@ impl Codegen {
         let mut codes = CodeSection::new();
         let mut f = Function::new(vec![]);
 
-        self.compile_expr(expr, &mut f);
+        for stmt in stmts {
+            self.compile_stmt(stmt, &mut f);
+        }
 
         f.instruction(&Instruction::End);
         codes.function(&f);
@@ -119,6 +120,62 @@ impl Codegen {
                 }
             }
             _ => panic!("Unsupported expression type"),
+        }
+    }
+
+    fn compile_stmt(&mut self, stmt: &Statement, f: &mut Function) {
+        match stmt {
+            Statement::Expr(expr) => {
+                self.compile_expr(expr, f);
+                f.instruction(&Instruction::Drop);
+            }
+            Statement::If { condition, consequent, alternate } => {
+                self.compile_expr(condition, f);
+                f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
+                for stmt in consequent {    
+                    self.compile_stmt(stmt, f);
+                }
+                if let Some(alternate) = alternate {
+                    f.instruction(&Instruction::Else);
+                    for stmt in alternate {
+                        self.compile_stmt(stmt, f);
+                    }
+                }
+                f.instruction(&Instruction::End);
+            }
+            Statement::While { condition, body } => {
+                todo!()
+            }
+            Statement::Let { name, value, type_annotation } => {
+                todo!()
+            }
+            Statement::Const { name, value, type_annotation } => {
+                todo!()
+            }
+            Statement::Return(expr) => {
+                todo!()
+            }
+            Statement::Break => {
+                todo!()
+            }
+            Statement::Continue => {
+                todo!()
+            }
+            Statement::For { initializer, condition, increment, body } => {
+                todo!()
+            }
+            Statement::Function { name, params, return_type, body } => {
+                todo!()
+            }
+            Statement::Struct { name, fields } => {
+                todo!()
+            }
+            Statement::Error { name } => {
+                todo!()
+            }
+            Statement::Match { expr, arms } => {
+                todo!()
+            }
         }
     }
 }

@@ -81,4 +81,5 @@ pub enum Statement {
     Struct { name: String, fields: Vec<(String, Type)> },
     Error {name: String},
     Match { expr: Box<Expr>, arms: Vec<(String, Vec<Statement>)> },
+    Print(Box<Expr>),
 }
