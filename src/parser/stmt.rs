@@ -82,6 +82,12 @@ impl<'a> Parser<'a> {
         Statement::Continue
     }
 
+    fn parse_print_statement(&mut self) -> Statement {
+        self.expect(&Token::Print);
+        let expr = Box::new(self.parse_expression(0));
+        self.expect(&Token::Semicolon);
+        Statement::Print(expr)
+    }
 
     fn parse_if_statement(&mut self) -> Statement {
         self.expect(&Token::If);
@@ -280,6 +286,7 @@ impl<'a> Parser<'a> {
             Some(Token::Error) => self.parse_error_definition(),
             Some(Token::Match) => self.parse_match_statement(),
             Some(Token::Fn) => self.parse_function_definition(),
+            Some(Token::Print) => self.parse_print_statement(),
             _ if !self.at_end() => self.parse_expression_statement(),
             _ => panic!("Unexpected token in statement: {:?}", self.peek()),
         }

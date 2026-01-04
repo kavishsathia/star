@@ -166,6 +166,9 @@ pub enum Token {
     #[token("raise")]
     Raise,
 
+    #[token("print")]
+    Print,
+
     #[token("new")]
     New,
 

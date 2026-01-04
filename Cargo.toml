@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 logos = "0.16.0"
 wasm-encoder = "0.243.0"
+wasmtime = "29.0"

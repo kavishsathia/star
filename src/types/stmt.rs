@@ -159,6 +159,13 @@ impl TypeChecker {
             Statement::Match { expr, arms } => {
                 todo!()
             }
+            Statement::Print(expr) => {
+                let expr_type = self.check_expr(expr)?;
+                if expr_type.nullable || expr_type.errorable {
+                    return Err(TypeError::new("Cannot print nullable or errorable expression"));
+                }
+                Ok(())
+            }
         }
     }
 

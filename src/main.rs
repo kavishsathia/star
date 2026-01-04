@@ -8,7 +8,7 @@ use parser::Parser;
 use codegen::Codegen;
 
 fn main() {
-    let source = "if false { 1 + 2; } else if false { 5 + 6; } else { 3 + 4; }";
+    let source = "print (1 + 2) * 3;";
 
     println!("Compiling: {}", source);
 
@@ -22,6 +22,6 @@ fn main() {
 
     std::fs::write("output.wasm", &wasm_bytes).unwrap();
     println!("Wrote {} bytes to output.wasm", wasm_bytes.len());
-    println!("\nRun with: wasmtime output.wasm --invoke main");
+    println!("\nRun with: cargo run --bin run");
 }
 

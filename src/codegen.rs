@@ -1,6 +1,6 @@
 use wasm_encoder::{
     CodeSection, ExportSection, Function, FunctionSection,
-    Instruction, Module, TypeSection,
+    ImportSection, Instruction, Module, TypeSection, ValType, EntityType,
 };
 use crate::ast::{Expr, BinaryOp, UnaryOp, Statement};
 
@@ -14,16 +14,23 @@ impl Codegen {
     pub fn compile(&mut self, stmts: &[Statement]) -> Vec<u8> {
         let mut module = Module::new();
 
+
         let mut types = TypeSection::new();
-        types.ty().function(vec![], vec![]); // () -> () for statements
+        types.ty().function(vec![ValType::I64], vec![]); 
+        types.ty().function(vec![], vec![]);
         module.section(&types);
 
+        // Import section: import print_i64 from host
+        let mut imports = ImportSection::new();
+        imports.import("env", "print_i64", EntityType::Function(0)); // function index 0
+        module.section(&imports);
+
         let mut functions = FunctionSection::new();
-        functions.function(0);
+        functions.function(1); // main uses type 1
         module.section(&functions);
 
         let mut exports = ExportSection::new();
-        exports.export("main", wasm_encoder::ExportKind::Func, 0);
+        exports.export("main", wasm_encoder::ExportKind::Func, 1);
         module.section(&exports);
 
         let mut codes = CodeSection::new();
@@ -175,6 +182,10 @@ impl Codegen {
             }
             Statement::Match { expr, arms } => {
                 todo!()
+            }
+            Statement::Print(expr) => {
+                self.compile_expr(expr, f);
+                f.instruction(&Instruction::Call(0)); // call print_i64 (function index 0)
             }
         }
     }
