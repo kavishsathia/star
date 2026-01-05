@@ -36,7 +36,7 @@ impl Codegen {
         module.section(&exports);
 
         let mut codes = CodeSection::new();
-        let mut f = Function::new(vec![(4, ValType::I64)]);
+        let mut f = Function::new(vec![(5, ValType::I64)]);
 
         for stmt in stmts {
             self.compile_stmt(stmt, &mut f);
@@ -208,7 +208,19 @@ impl Codegen {
                 f.instruction(&Instruction::Br(0));
             }
             Statement::For { initializer, condition, increment, body } => {
-                todo!()
+                f.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty));
+                self.compile_stmt(initializer, f);
+                f.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
+                self.compile_expr(condition, f);
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::BrIf(1));
+                for stmt in body {
+                    self.compile_stmt(stmt, f);
+                }
+                self.compile_stmt(increment, f);
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::End);
             }
             Statement::Function { name, params, return_type, body, local_types } => {
                 todo!()

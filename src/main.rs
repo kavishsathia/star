@@ -22,6 +22,10 @@ fn main() {
             n = n - 1;
         }
 
+        for let i: integer = 0; i < 10; i = i + 1; {
+            print i;
+        }
+
         print x;
     ";
 
