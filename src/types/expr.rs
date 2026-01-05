@@ -38,7 +38,7 @@ impl TypeChecker {
                     errorable: false,
                 })
             }
-            Expr::Identifier(name) => {
+            Expr::Identifier { name, local_index } => {
                 match self.lookup(name) {
                     Some(ty) => Ok(ty.clone()),
                     None => Err(TypeError::new(format!("Undefined identifier '{}'", name))),

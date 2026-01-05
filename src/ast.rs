@@ -1,3 +1,5 @@
+use std::cell::{Cell, RefCell};
+
 #[derive(Debug)]
 pub enum BinaryOp {
     Plus,
@@ -52,7 +54,7 @@ pub enum Expr {
     Float(f64),
     String(String),
     Boolean(bool),
-    Identifier(String),
+    Identifier { name: String, local_index: Cell<Option<u32>> },
     List(Vec<Expr>),
     Dict(Vec<(Expr, Expr)>), 
     MemberAccess { object: Box<Expr>, field: String },
@@ -69,15 +71,15 @@ pub enum Expr {
 #[derive(Debug)]
 pub enum Statement {
     Expr(Expr),
-    Let { name: String, value: Option<Box<Expr>>, type_annotation: Type },
-    Const { name: String, value: Box<Expr>, type_annotation: Type },
+    Let { name: String, value: Option<Box<Expr>>, type_annotation: Type, local_index: Cell<Option<u32>> },
+    Const { name: String, value: Box<Expr>, type_annotation: Type, local_index: Cell<Option<u32>> },
     Return(Option<Box<Expr>>),
     Break,
     Continue,
     If { condition: Box<Expr>, consequent: Vec<Statement>, alternate: Option<Vec<Statement>> },
     For { initializer: Box<Statement>, condition: Box<Expr>, increment: Box<Statement>, body: Vec<Statement> },
     While { condition: Box<Expr>, body: Vec<Statement> },
-    Function { name: String, params: Vec<(String, Type)>, return_type: Type, body: Vec<Statement> },
+    Function { name: String, params: Vec<(String, Type)>, return_type: Type, body: Vec<Statement>, local_types: RefCell<Vec<Type>> },
     Struct { name: String, fields: Vec<(String, Type)> },
     Error {name: String},
     Match { expr: Box<Expr>, arms: Vec<(String, Vec<Statement>)> },

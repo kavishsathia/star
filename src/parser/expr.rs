@@ -35,7 +35,7 @@ impl<'a> Parser<'a> {
             Some(Token::Identifier) => {
                 let slice = self.slice().to_string();
                 self.advance();
-                Expr::Identifier(slice)
+                Expr::Identifier { name: slice, local_index: std::cell::Cell::new(None)  }
             }
             Some(Token::LParenthesis) => {
                 self.advance();

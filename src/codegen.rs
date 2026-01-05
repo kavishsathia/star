@@ -1,4 +1,4 @@
-use std::fmt::Binary;
+use std::{fmt::Binary, mem::discriminant};
 
 use wasm_encoder::{
     CodeSection, ExportSection, Function, FunctionSection,
@@ -36,7 +36,7 @@ impl Codegen {
         module.section(&exports);
 
         let mut codes = CodeSection::new();
-        let mut f = Function::new(vec![]);
+        let mut f = Function::new(vec![(4, ValType::I64)]);
 
         for stmt in stmts {
             self.compile_stmt(stmt, &mut f);
@@ -60,7 +60,16 @@ impl Codegen {
             Expr::Boolean(b) => {
                 f.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
             }
-            Expr::Binary { left, op, right } => {
+            Expr::Binary { left, op: BinaryOp::Is, right } =>  {
+                self.compile_expr(right, f);
+                if let Expr::Identifier { local_index, .. } = &**left {
+                    let index = local_index.get().expect("Local index not set for identifier");
+                    f.instruction(&Instruction::LocalTee(index));
+                } else {
+                    panic!("Left side of 'is' must be an identifier");
+                }
+            }
+            Expr::Binary { left, op, right }  => {
                 self.compile_expr(left, f);
                 self.compile_expr(right, f);
                 match op {
@@ -118,6 +127,10 @@ impl Codegen {
                     _ => panic!("Unsupported binary operation"),
                 }
             }
+            Expr::Identifier { name, local_index } => {
+                let index = local_index.get().expect("Local index not set for identifier");
+                f.instruction(&Instruction::LocalGet(index));
+            }
             Expr::Unary { op, expr } => {
                 match op {
                     UnaryOp::Minus => {
@@ -171,11 +184,19 @@ impl Codegen {
                 f.instruction(&Instruction::End);
                 f.instruction(&Instruction::End);
             }
-            Statement::Let { name, value, type_annotation } => {
-                todo!()
+            Statement::Let { name, value, type_annotation, local_index } => {
+                if let Some(expr) = value {
+                    self.compile_expr(expr, f);
+                } else {
+                    f.instruction(&Instruction::I64Const(0));
+                }
+                let index = local_index.get().expect("Local index not set for variable");
+                f.instruction(&Instruction::LocalSet(index));
             }
-            Statement::Const { name, value, type_annotation } => {
-                todo!()
+            Statement::Const { name, value, type_annotation, local_index } => {
+                self.compile_expr(value, f);
+                let index = local_index.get().expect("Local index not set for constant");
+                f.instruction(&Instruction::LocalSet(index));
             }
             Statement::Return(expr) => {
                 todo!()
@@ -189,7 +210,7 @@ impl Codegen {
             Statement::For { initializer, condition, increment, body } => {
                 todo!()
             }
-            Statement::Function { name, params, return_type, body } => {
+            Statement::Function { name, params, return_type, body, local_types } => {
                 todo!()
             }
             Statement::Struct { name, fields } => {

@@ -8,7 +8,7 @@ impl TypeChecker {
                 self.check_expr(expr)?;
                 Ok(())
             }
-            Statement::Let { name, value, type_annotation } => {
+            Statement::Let { name, value, type_annotation, local_index } => {
                 if let Some(init_expr) = value {
                     let init_type = self.check_expr(init_expr)?;
                     if !self.is_assignable(&init_type, type_annotation) {
@@ -28,7 +28,7 @@ impl TypeChecker {
                 self.define(name.clone(), type_annotation.clone());
                 Ok(())
             }
-            Statement::Const { name, value, type_annotation } => {
+            Statement::Const { name, value, type_annotation, local_index } => {
                 let value_type = self.check_expr(value)?;
                 if !self.is_assignable(&value_type, type_annotation) {
                     return Err(TypeError::new(format!(
@@ -120,7 +120,7 @@ impl TypeChecker {
 
                 Ok(())
             }
-            Statement::Function { name, params, return_type, body } => {
+            Statement::Function { name, params, return_type, body, local_types } => {
                 let func_type = Type {
                     kind: TypeKind::Function {
                         param_types: params.iter().map(|(_, ty)| ty.clone()).collect(),

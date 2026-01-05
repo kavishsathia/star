@@ -69,6 +69,14 @@ impl<'a> Parser<'a> {
         self.current.is_none()
     }
 
+    pub fn parse_program(&mut self) -> Vec<Statement> {
+        let mut stmts = Vec::new();
+        while !self.at_end() {
+            stmts.push(self.parse_statement());
+        }
+        stmts
+    }
+
     pub fn infix_binding_power(op: &Token) -> Option<(u8, u8)> {
         match op {
             Token::Is => Some((0, 1)),

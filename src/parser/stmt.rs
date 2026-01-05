@@ -25,7 +25,7 @@ impl<'a> Parser<'a> {
 
         self.expect(&Token::Semicolon);
 
-        Statement::Let { name, value, type_annotation }
+        Statement::Let { name, value, type_annotation, local_index: std::cell::Cell::new(None) }
     }
 
     fn parse_const_statement(&mut self) -> Statement {
@@ -50,7 +50,7 @@ impl<'a> Parser<'a> {
 
         self.expect(&Token::Semicolon);
 
-        Statement::Const { name, value, type_annotation }
+        Statement::Const { name, value, type_annotation, local_index: std::cell::Cell::new(None) }
     }
 
     fn parse_expression_statement(&mut self) -> Statement {
@@ -269,7 +269,7 @@ impl<'a> Parser<'a> {
         }
         self.expect(&Token::RBrace);
 
-        Statement::Function { name, params, return_type, body }
+        Statement::Function { name, params, return_type, body, local_types: std::cell::RefCell::new(Vec::new())  }
     }
 
     pub fn parse_statement(&mut self) -> Statement {
