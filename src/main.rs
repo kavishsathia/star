@@ -8,7 +8,10 @@ use parser::Parser;
 use codegen::Codegen;
 
 fn main() {
-    let source = "print (1 + 2) * 3;";
+    let source = r"
+       print (true and false);
+    
+    ";
 
     println!("Compiling: {}", source);
 

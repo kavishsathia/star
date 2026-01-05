@@ -1,3 +1,5 @@
+use std::fmt::Binary;
+
 use wasm_encoder::{
     CodeSection, ExportSection, Function, FunctionSection,
     ImportSection, Instruction, Module, TypeSection, ValType, EntityType,
@@ -107,6 +109,12 @@ impl Codegen {
                     BinaryOp::Xor => {
                         f.instruction(&Instruction::I64Xor);
                     }
+                    BinaryOp::And => {
+                        f.instruction(&Instruction::I32And);
+                    }
+                    BinaryOp::Or => {
+                        f.instruction(&Instruction::I32Or);
+                    }
                     _ => panic!("Unsupported binary operation"),
                 }
             }
@@ -151,7 +159,17 @@ impl Codegen {
                 f.instruction(&Instruction::End);
             }
             Statement::While { condition, body } => {
-                todo!()
+                f.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty));
+                f.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
+                self.compile_expr(condition, f);
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::BrIf(1));
+                for stmt in body {
+                    self.compile_stmt(stmt, f);
+                }
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::End);
             }
             Statement::Let { name, value, type_annotation } => {
                 todo!()
@@ -163,10 +181,10 @@ impl Codegen {
                 todo!()
             }
             Statement::Break => {
-                todo!()
+                f.instruction(&Instruction::Br(1));
             }
             Statement::Continue => {
-                todo!()
+                f.instruction(&Instruction::Br(0));
             }
             Statement::For { initializer, condition, increment, body } => {
                 todo!()
