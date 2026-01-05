@@ -120,7 +120,7 @@ impl TypeChecker {
 
                 Ok(())
             }
-            Statement::Function { name, params, return_type, body, local_types } => {
+            Statement::Function { name, params, return_type, body, local_types, function_index, local_index } => {
                 let func_type = Type {
                     kind: TypeKind::Function {
                         param_types: params.iter().map(|(_, ty)| ty.clone()).collect(),

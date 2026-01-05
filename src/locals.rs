@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::ast::{Expr, Statement, Type};
+use crate::ast::{Expr, Statement, Type, TypeKind};
 
 pub struct LocalsIndexer {
     scopes: Vec<HashMap<String, u32>>,
@@ -57,7 +57,7 @@ impl LocalsIndexer {
                 local_index.set(Some(self.define(name.clone(), type_annotation.clone())));
                 Ok(())
             }
-            Statement::Function { params, body, local_types, .. } => {
+            Statement::Function { name, params, body, local_types, local_index, return_type, .. } => {
                 let mut fn_indexer = LocalsIndexer::new();
                 for (param_name, param_type) in params {
                     fn_indexer.define(param_name.clone(), param_type.clone());
@@ -66,6 +66,15 @@ impl LocalsIndexer {
                     fn_indexer.index_stmt(stmt)?;
                 }
                 *local_types.borrow_mut() = fn_indexer.local_types;
+                print!("Function '{}' has locals:\n", name);
+                local_index.set(Some(self.define(name.clone(), Type {
+                    kind: TypeKind::Function {
+                        param_types: params.iter().map(|(_, ty)| ty.clone()).collect(),
+                        return_type: Box::new(return_type.clone()),
+                    },
+                    nullable: false,
+                    errorable: false,
+                })));
                 Ok(())
             }
             Statement::If { condition, consequent, alternate } => {

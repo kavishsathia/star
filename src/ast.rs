@@ -1,6 +1,12 @@
 use std::cell::{Cell, RefCell};
 
 #[derive(Debug)]
+pub struct Program {
+    pub statements: Vec<Statement>,
+    pub function_signatures: Vec<(String, Vec<Type>, Type)>,
+}
+
+#[derive(Debug)]
 pub enum BinaryOp {
     Plus,
     Minus,
@@ -79,7 +85,7 @@ pub enum Statement {
     If { condition: Box<Expr>, consequent: Vec<Statement>, alternate: Option<Vec<Statement>> },
     For { initializer: Box<Statement>, condition: Box<Expr>, increment: Box<Statement>, body: Vec<Statement> },
     While { condition: Box<Expr>, body: Vec<Statement> },
-    Function { name: String, params: Vec<(String, Type)>, return_type: Type, body: Vec<Statement>, local_types: RefCell<Vec<Type>> },
+    Function { name: String, params: Vec<(String, Type)>, return_type: Type, body: Vec<Statement>, local_types: RefCell<Vec<Type>>, function_index: Cell<Option<u32>>, local_index: Cell<Option<u32>> },
     Struct { name: String, fields: Vec<(String, Type)> },
     Error {name: String},
     Match { expr: Box<Expr>, arms: Vec<(String, Vec<Statement>)> },

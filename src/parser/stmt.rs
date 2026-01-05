@@ -269,7 +269,7 @@ impl<'a> Parser<'a> {
         }
         self.expect(&Token::RBrace);
 
-        Statement::Function { name, params, return_type, body, local_types: std::cell::RefCell::new(Vec::new())  }
+        Statement::Function { name, params, return_type, body, local_types: std::cell::RefCell::new(Vec::new()), function_index: std::cell::Cell::new(None), local_index: std::cell::Cell::new(None)  }
     }
 
     pub fn parse_statement(&mut self) -> Statement {

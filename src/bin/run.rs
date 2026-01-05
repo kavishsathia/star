@@ -22,8 +22,9 @@ fn main() -> Result<()> {
     let instance = linker.instantiate(&mut store, &module)?;
 
     // Get and call the main function
-    let main = instance.get_typed_func::<(), ()>(&mut store, "main")?;
-    main.call(&mut store, ())?;
+    let main = instance.get_typed_func::<(), i64>(&mut store, "main")?;
+    let result = main.call(&mut store, ())?;
+    println!("main returned: {}", result);
 
     Ok(())
 }

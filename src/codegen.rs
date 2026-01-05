@@ -1,52 +1,116 @@
 use std::{fmt::Binary, mem::discriminant};
 
 use wasm_encoder::{
-    CodeSection, ExportSection, Function, FunctionSection,
-    ImportSection, Instruction, Module, TypeSection, ValType, EntityType,
+    CodeSection, ConstExpr, ElementSection, Elements, ExportSection, Function, FunctionSection,
+    ImportSection, Instruction, Module, RefType, TableSection, TableType, TypeSection,
+    ValType, EntityType,
 };
-use crate::ast::{Expr, BinaryOp, UnaryOp, Statement};
+use crate::ast::{BinaryOp, Expr, Program, Statement, Type, TypeKind, UnaryOp};
 
 pub struct Codegen {}
+
+impl Codegen {
+    fn type_to_valtype(ty: &Type) -> ValType {
+        match &ty.kind {
+            TypeKind::Function { .. } => ValType::I32,
+            _ => ValType::I64,
+        }
+    }
+}
 
 impl Codegen {
     pub fn new() -> Self {
         Codegen {}
     }
 
-    pub fn compile(&mut self, stmts: &[Statement]) -> Vec<u8> {
+    pub fn compile(&mut self, program: Program) -> Vec<u8> {
+        let stmts = program.statements;
+        let fn_sigs = program.function_signatures;
         let mut module = Module::new();
 
-
         let mut types = TypeSection::new();
-        types.ty().function(vec![ValType::I64], vec![]); 
-        types.ty().function(vec![], vec![]);
+        types.ty().function(vec![ValType::I64], vec![]);
+        for (_name, param_types, return_type) in &fn_sigs {
+            let params: Vec<ValType> = param_types.iter().map(Self::type_to_valtype).collect();
+            let results: Vec<ValType> = vec![Self::type_to_valtype(return_type)];
+            types.ty().function(params, results);
+        }
         module.section(&types);
 
-        // Import section: import print_i64 from host
         let mut imports = ImportSection::new();
-        imports.import("env", "print_i64", EntityType::Function(0)); // function index 0
+        imports.import("env", "print_i64", EntityType::Function(0));
         module.section(&imports);
 
         let mut functions = FunctionSection::new();
-        functions.function(1); // main uses type 1
+        for (i, _) in fn_sigs.iter().enumerate() {
+            functions.function((i + 1) as u32);
+        }
         module.section(&functions);
+
+        if !fn_sigs.is_empty() {
+            let mut tables = TableSection::new();
+            tables.table(TableType {
+                element_type: RefType::FUNCREF,
+                minimum: fn_sigs.len() as u64,
+                maximum: Some(fn_sigs.len() as u64),
+                table64: false,
+                shared: false,
+            });
+            module.section(&tables);
+        }
 
         let mut exports = ExportSection::new();
         exports.export("main", wasm_encoder::ExportKind::Func, 1);
         module.section(&exports);
 
-        let mut codes = CodeSection::new();
-        let mut f = Function::new(vec![(5, ValType::I64)]);
-
-        for stmt in stmts {
-            self.compile_stmt(stmt, &mut f);
+        if !fn_sigs.is_empty() {
+            let func_indices: Vec<u32> = (1..=fn_sigs.len() as u32).collect();
+            let mut elements = ElementSection::new();
+            elements.active(
+                Some(0),
+                &ConstExpr::i32_const(0),
+                Elements::Functions(std::borrow::Cow::Borrowed(&func_indices)),
+            );
+            module.section(&elements);
         }
 
-        f.instruction(&Instruction::End);
-        codes.function(&f);
+        let mut codes = CodeSection::new();
+
+        for stmt in &stmts {
+            if let Statement::Function { .. } = stmt {
+                self.compile_function(stmt, &mut codes);
+            }
+        }
+
         module.section(&codes);
 
         module.finish()
+    }
+
+    fn compile_function(&mut self, stmt: &Statement, codes: &mut CodeSection) {
+        if let Statement::Function { body, local_types, function_index, local_index, .. } = stmt {
+            let local_types_vec = local_types.borrow();
+            let locals: Vec<(u32, ValType)> = local_types_vec
+                .iter()
+                .map(|t| (1, Self::type_to_valtype(t)))
+                .collect();
+            let mut f = Function::new(locals);
+
+            for body_stmt in body {
+                self.compile_stmt(body_stmt, &mut f);
+            }
+
+            f.instruction(&Instruction::End);
+            codes.function(&f);
+
+            for body_stmt in body {
+                if let Statement::Function { .. } = body_stmt {
+                    self.compile_function(body_stmt, codes);
+                }
+            }
+        } else {
+            panic!("compile_function called with non-function statement");
+        }
     }
 
     fn compile_expr(&mut self, expr: &Expr, f: &mut Function) {
@@ -147,6 +211,16 @@ impl Codegen {
                     }
                 }
             }
+            Expr::Call { callee, args } => {
+                for arg in args {
+                    self.compile_expr(arg, f);
+                }
+                self.compile_expr(callee, f);
+                f.instruction(&Instruction::CallIndirect {
+                    type_index: 2, // Placeholder type index
+                    table_index: 0,
+                });
+            }
             _ => panic!("Unsupported expression type"),
         }
     }
@@ -199,7 +273,12 @@ impl Codegen {
                 f.instruction(&Instruction::LocalSet(index));
             }
             Statement::Return(expr) => {
-                todo!()
+                if let Some(expr) = expr {
+                    self.compile_expr(expr, f);
+                } else {
+                    f.instruction(&Instruction::I64Const(0));
+                }
+                f.instruction(&Instruction::Return);
             }
             Statement::Break => {
                 f.instruction(&Instruction::Br(1));
@@ -222,8 +301,9 @@ impl Codegen {
                 f.instruction(&Instruction::End);
                 f.instruction(&Instruction::End);
             }
-            Statement::Function { name, params, return_type, body, local_types } => {
-                todo!()
+            Statement::Function { name, params, return_type, body, local_types, function_index, local_index } => {
+                f.instruction(&Instruction::I32Const(function_index.get().expect("Function index not set") as i32));
+                f.instruction(&Instruction::LocalSet(local_index.get().expect("Local index not set for function")));
             }
             Statement::Struct { name, fields } => {
                 todo!()
