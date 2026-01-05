@@ -12,10 +12,12 @@
 
 ## The Problem
 
-<p align="center">
-  <img src="assets/adk.py.png" alt="Python ADK" height="400"/>
-  <img src="assets/adk.ts.png" alt="TypeScript ADK" height="400"/>
-</p>
+<table align="center">
+  <tr>
+    <td><img src="assets/adk.py.png" alt="Python ADK" width="100%"/></td>
+    <td><img src="assets/adk.ts.png" alt="TypeScript ADK" width="100%"/></td>
+  </tr>
+</table>
 
 ## The Solution
 
