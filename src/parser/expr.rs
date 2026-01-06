@@ -1,5 +1,5 @@
 use crate::lexer::Token;
-use crate::ast::{Expr, UnaryOp};
+use crate::ast::{Expr, Pattern, UnaryOp};
 use super::Parser;
 
 impl<'a> Parser<'a> {
@@ -35,7 +35,7 @@ impl<'a> Parser<'a> {
             Some(Token::Identifier) => {
                 let slice = self.slice().to_string();
                 self.advance();
-                Expr::Identifier { name: slice, local_index: std::cell::Cell::new(None)  }
+                Expr::Identifier(slice)
             }
             Some(Token::LParenthesis) => {
                 self.advance();
@@ -62,34 +62,15 @@ impl<'a> Parser<'a> {
                     Expr::List(vec![])
                 } else {
                     let first = self.parse_expression(0);
+                    let mut elements = vec![first];
 
-                    if self.check(&Token::Colon) {
-                        let mut kvs = Vec::new();
+                    while self.check(&Token::Separator) {
                         self.advance();
-                        let value = self.parse_expression(0);
-                        kvs.push((first, value));
-
-                        while self.check(&Token::Separator) {
-                            self.advance();
-                            let key = self.parse_expression(0);
-                            self.expect(&Token::Colon);
-                            let value = self.parse_expression(0);
-                            kvs.push((key, value));
-                        }
-
-                        self.expect(&Token::RBrace);
-                        Expr::Dict(kvs)
-                    } else {
-                        let mut elements = vec![first];
-
-                        while self.check(&Token::Separator) {
-                            self.advance();
-                            elements.push(self.parse_expression(0));
-                        }
-
-                        self.expect(&Token::RBrace);
-                        Expr::List(elements)
+                        elements.push(self.parse_expression(0));
                     }
+
+                    self.expect(&Token::RBrace);
+                    Expr::List(elements)
                 }
             }
             Some(Token::New) => {
@@ -119,7 +100,48 @@ impl<'a> Parser<'a> {
                     }
                 }
                 self.expect(&Token::RBrace);
-                Expr::Init { name, fields, type_index: std::cell::Cell::new(None)}
+                Expr::New { name, fields }
+            }
+            Some(Token::Match) => {
+                self.advance();
+                let expr = Box::new(self.parse_expression(0));
+                self.expect(&Token::As);
+                let binding = if let Some(Token::Identifier) = self.peek() {
+                    let name = self.current_slice.clone();
+                    self.advance();
+                    name
+                } else {
+                    panic!("Expected identifier after 'as', found {:?}", self.peek());
+                };
+                self.expect(&Token::LBrace);
+                let mut arms = Vec::new();
+                while !self.check(&Token::RBrace) {
+                    let pattern = if self.check(&Token::NullOrError) {
+                        self.advance();
+                        Pattern::MatchAll
+                    } else if self.check(&Token::Nullable) {
+                        self.advance();
+                        Pattern::MatchNull
+                    } else if self.check(&Token::Errorable) {
+                        self.advance();
+                        Pattern::MatchError
+                    } else if self.check(&Token::Identifier) {
+                        let ty = self.parse_type();
+                        Pattern::MatchType(ty)
+                    } else {
+                        panic!("Expected pattern in match arm, found {:?}", self.peek());
+                    };
+                    self.expect(&Token::Colon);
+                    self.expect(&Token::LBrace);
+                    let mut body = Vec::new();
+                    while !self.check(&Token::RBrace) {
+                        body.push(self.parse_statement(false));
+                    }
+                    self.expect(&Token::RBrace);
+                    arms.push((pattern, body));
+                }
+                self.expect(&Token::RBrace);
+                Expr::Match { expr, binding, arms }
             }
             _ => panic!("Unexpected token: {:?}", self.peek()),
         };
@@ -159,21 +181,18 @@ impl<'a> Parser<'a> {
                 } else {
                     panic!("Expected identifier after '.', found {:?}", self.peek());
                 };
-                left = Expr::MemberAccess { object: Box::new(left), field };
+                left = Expr::Field { object: Box::new(left), field };
             } else if *op == Token::LBracket {
                 self.advance();
                 let expr = self.parse_expression(0);
                 self.expect(&Token::RBracket);
-                left = Expr::KeyAccess { dict: Box::new(left), key: Box::new(expr) };
-            } else if (*op == Token::NotNull) {
+                left = Expr::Index { object: Box::new(left), key: Box::new(expr) };
+            } else if *op == Token::NotNull {
                 self.advance();
-                left = Expr::NotNull(Box::new(left));
-            } else if (*op == Token::NotError) {
+                left = Expr::UnwrapNull(Box::new(left));
+            } else if *op == Token::NotError {
                 self.advance();
-                left = Expr::NotError(Box::new(left));
-            } else if (*op == Token::NotNullOrError) {
-                self.advance();
-                left = Expr::NotNullOrError(Box::new(left));
+                left = Expr::UnwrapError(Box::new(left));
             } else {
                 break;
             }

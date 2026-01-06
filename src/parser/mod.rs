@@ -72,12 +72,10 @@ impl<'a> Parser<'a> {
     pub fn parse_program(&mut self) -> Program {
         let mut stmts = Vec::new();
         while !self.at_end() {
-            stmts.push(self.parse_statement());
+            stmts.push(self.parse_statement(true));
         }
         Program {
             statements: stmts,
-            function_signatures: Vec::new(),
-            struct_types: Vec::new(),
         }
     }
 

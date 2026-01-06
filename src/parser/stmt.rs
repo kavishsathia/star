@@ -15,17 +15,17 @@ impl<'a> Parser<'a> {
 
         self.expect(&Token::Colon);
 
-        let type_annotation = self.parse_type();
+        let ty = self.parse_type();
 
         let value = if self.match_token(&Token::Is) {
-            Some(Box::new(self.parse_expression(0)))
+            Some(self.parse_expression(0))
         } else {
             None
         };
 
         self.expect(&Token::Semicolon);
 
-        Statement::Let { name, value, type_annotation, local_index: std::cell::Cell::new(None) }
+        Statement::Let { name, ty, value }
     }
 
     fn parse_const_statement(&mut self) -> Statement {
@@ -40,17 +40,17 @@ impl<'a> Parser<'a> {
 
         self.expect(&Token::Colon);
 
-        let type_annotation = self.parse_type();
+        let ty = self.parse_type();
 
         let value = if self.match_token(&Token::Is) {
-            Box::new(self.parse_expression(0))
+            self.parse_expression(0)
         } else {
             panic!("Expected '=' after const declaration, found {:?}", self.peek());
         };
 
         self.expect(&Token::Semicolon);
 
-        Statement::Const { name, value, type_annotation, local_index: std::cell::Cell::new(None) }
+        Statement::Const { name, ty, value }
     }
 
     fn parse_expression_statement(&mut self) -> Statement {
@@ -62,7 +62,7 @@ impl<'a> Parser<'a> {
     fn parse_return_statement(&mut self) -> Statement {
         self.expect(&Token::Return);
         let expr = if !self.check(&Token::Semicolon) {
-            Some(Box::new(self.parse_expression(0)))
+            Some(self.parse_expression(0))
         } else {
             None
         };
@@ -84,29 +84,36 @@ impl<'a> Parser<'a> {
 
     fn parse_print_statement(&mut self) -> Statement {
         self.expect(&Token::Print);
-        let expr = Box::new(self.parse_expression(0));
+        let expr = self.parse_expression(0);
         self.expect(&Token::Semicolon);
         Statement::Print(expr)
     }
 
+    fn parse_produce_statement(&mut self) -> Statement {
+        self.expect(&Token::Produce);
+        let expr = self.parse_expression(0);
+        self.expect(&Token::Semicolon);
+        Statement::Produce(expr)
+    }
+
     fn parse_if_statement(&mut self) -> Statement {
         self.expect(&Token::If);
-        let condition = Box::new(self.parse_expression(0));
+        let condition = self.parse_expression(0);
         self.expect(&Token::LBrace);
-        let mut consequent = Vec::new();
+        let mut then_block = Vec::new();
         while !self.check(&Token::RBrace) {
-            consequent.push(self.parse_statement());
+            then_block.push(self.parse_statement(false));
         }
         self.expect(&Token::RBrace);
 
-        let alternate = if self.match_token(&Token::Else) {
+        let else_block = if self.match_token(&Token::Else) {
             if self.check(&Token::If) {
                 Some(vec![self.parse_if_statement()])
             } else {
                 self.expect(&Token::LBrace);
                 let mut alternate_block = Vec::new();
                 while !self.check(&Token::RBrace) {
-                    alternate_block.push(self.parse_statement());
+                    alternate_block.push(self.parse_statement(false));
                 }
                 self.expect(&Token::RBrace);
                 Some(alternate_block)
@@ -115,37 +122,40 @@ impl<'a> Parser<'a> {
             None
         };
 
-        Statement::If { condition, consequent, alternate }
+        Statement::If { condition, then_block, else_block }
     }
 
     fn parse_for_statement(&mut self) -> Statement {
         self.expect(&Token::For);
-        let initializer = Box::new(self.parse_statement());
-        let condition = Box::new(self.parse_expression(0));
+        let init = Box::new(self.parse_statement(false));
+        let condition = self.parse_expression(0);
         self.expect(&Token::Semicolon);
-        let increment = Box::new(self.parse_statement());
+        let update = Box::new(self.parse_statement(false));
         self.expect(&Token::LBrace);
         let mut body = Vec::new();
         while !self.check(&Token::RBrace) {
-            body.push(self.parse_statement());
+            body.push(self.parse_statement(false));
         }
         self.expect(&Token::RBrace);
-        Statement::For { initializer, condition, increment, body }
+        Statement::For { init, condition, update, body }
     }
 
     fn parse_while_statement(&mut self) -> Statement {
         self.expect(&Token::While);
-        let condition = Box::new(self.parse_expression(0));
+        let condition = self.parse_expression(0);
         self.expect(&Token::LBrace);
         let mut body = Vec::new();
         while !self.check(&Token::RBrace) {
-            body.push(self.parse_statement());
+            body.push(self.parse_statement(false));
         }
         self.expect(&Token::RBrace);
         Statement::While { condition, body }
     }
 
-    fn parse_struct_definition(&mut self) -> Statement {
+    fn parse_struct_definition(&mut self, top_level: bool) -> Statement {
+        if !top_level {
+            panic!("Struct definitions must be at top level");
+        }
         self.expect(&Token::Struct);
         let name = if let Some(Token::Identifier) = self.peek() {
             let name = self.current_slice.clone();
@@ -181,7 +191,10 @@ impl<'a> Parser<'a> {
         Statement::Struct { name, fields }
     }
 
-    fn parse_error_definition(&mut self) -> Statement {
+    fn parse_error_definition(&mut self, top_level: bool) -> Statement {
+        if !top_level {
+            panic!("Error definitions must be at top level");
+        }
         self.expect(&Token::Error);
         let name = if let Some(Token::Identifier) = self.peek() {
             let name = self.current_slice.clone();
@@ -193,36 +206,6 @@ impl<'a> Parser<'a> {
 
         self.expect(&Token::Semicolon);
         Statement::Error { name }
-    }
-
-    fn parse_match_statement(&mut self) -> Statement {
-        self.expect(&Token::Match);
-        let expr = Box::new(self.parse_expression(0));
-        self.expect(&Token::LBrace);
-        let mut arms = Vec::new();
-        while !self.check(&Token::RBrace) {
-            let pattern = if let Some(Token::Identifier) = self.peek() {
-                let pattern = self.current_slice.clone();
-                self.advance();
-                pattern
-            } else {
-                panic!("Expected pattern in match arm, found {:?}", self.peek());
-            };
-
-            self.expect(&Token::Colon);
-
-            self.expect(&Token::LBrace);
-            let mut body = Vec::new();
-            while !self.check(&Token::RBrace) {
-                body.push(self.parse_statement());
-            }
-            self.expect(&Token::RBrace);
-
-            arms.push((pattern, body));
-        }
-        self.expect(&Token::RBrace);
-
-        Statement::Match { expr, arms }
     }
 
     fn parse_function_definition(&mut self) -> Statement {
@@ -260,19 +243,19 @@ impl<'a> Parser<'a> {
 
         self.expect(&Token::Colon);
 
-        let return_type = self.parse_type();
+        let returns = self.parse_type();
 
         self.expect(&Token::LBrace);
         let mut body = Vec::new();
         while !self.check(&Token::RBrace) {
-            body.push(self.parse_statement());
+            body.push(self.parse_statement(false));
         }
         self.expect(&Token::RBrace);
 
-        Statement::Function { name, params, return_type, body, local_types: std::cell::RefCell::new(Vec::new()), function_index: std::cell::Cell::new(None), local_index: std::cell::Cell::new(None)  }
+        Statement::Function { name, params, returns, body }
     }
 
-    pub fn parse_statement(&mut self) -> Statement {
+    pub fn parse_statement(&mut self, top_level: bool) -> Statement {
         match self.peek() {
             Some(Token::Let) => self.parse_let_statement(),
             Some(Token::Const) => self.parse_const_statement(),
@@ -282,11 +265,11 @@ impl<'a> Parser<'a> {
             Some(Token::If) => self.parse_if_statement(),
             Some(Token::For) => self.parse_for_statement(),
             Some(Token::While) => self.parse_while_statement(),
-            Some(Token::Struct) => self.parse_struct_definition(),
-            Some(Token::Error) => self.parse_error_definition(),
-            Some(Token::Match) => self.parse_match_statement(),
+            Some(Token::Struct) => self.parse_struct_definition(top_level),
+            Some(Token::Error) => self.parse_error_definition(top_level),
             Some(Token::Fn) => self.parse_function_definition(),
             Some(Token::Print) => self.parse_print_statement(),
+            Some(Token::Produce) => self.parse_produce_statement(),
             _ if !self.at_end() => self.parse_expression_statement(),
             _ => panic!("Unexpected token in statement: {:?}", self.peek()),
         }

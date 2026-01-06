@@ -1,13 +1,9 @@
-use std::cell::{Cell, RefCell};
-
 #[derive(Debug)]
 pub struct Program {
     pub statements: Vec<Statement>,
-    pub function_signatures: Vec<(String, Vec<Type>, Type)>,
-    pub struct_types: Vec<(String, u32)>,  // (name, size) for allocator
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Plus,
     Minus,
@@ -27,10 +23,10 @@ pub enum BinaryOp {
     Sll,
     Srl,
     Xor,
-    Is
+    Is,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Not,
     Minus,
@@ -46,49 +42,61 @@ pub struct Type {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeKind {
-    Null,     // only assignable to nullable types
-    Unknown,  // assignable to any type (for empty collections)
-    Primitive(String),
-    List(Box<Type>),
-    Dict { key_type: Box<Type>, value_type: Box<Type> },
-    Function { param_types: Vec<Type>, return_type: Box<Type> },
+    Integer,
+    Float,
+    Boolean,
+    String,
+    Struct { name: String },
+    Error { name: String },
+    List { element: Box<Type> },
+    Dict { key: Box<Type>, value: Box<Type> },
+    Function { params: Vec<Type>, returns: Box<Type> },
+    Null,
+    Unknown,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Null,
     Integer(i64),
     Float(f64),
     String(String),
     Boolean(bool),
-    Identifier { name: String, local_index: Cell<Option<u32>> },
+    Identifier(String),
     List(Vec<Expr>),
-    Dict(Vec<(Expr, Expr)>), 
-    MemberAccess { object: Box<Expr>, field: String },
-    KeyAccess { dict: Box<Expr>, key: Box<Expr> },
-    Init { name: String, fields: Vec<(String, Expr)>, type_index: Cell<Option<u32>> },
-    Binary { left: Box<Expr>, op: BinaryOp, right: Box<Expr> },
+    Field { object: Box<Expr>, field: String },
+    Index { object: Box<Expr>, key: Box<Expr> },
+    New { name: String, fields: Vec<(String, Expr)> },
+    Binary { left: Box<Expr>, op:   BinaryOp, right: Box<Expr> },
     Unary { op: UnaryOp, expr: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Expr> },
-    NotNull(Box<Expr>),
-    NotError(Box<Expr>),
-    NotNullOrError(Box<Expr>),
+    Match { expr: Box<Expr>, binding: String, arms: Vec<(Pattern, Vec<Statement>)> },
+    UnwrapError(Box<Expr>),
+    UnwrapNull(Box<Expr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    MatchNull,
+    MatchError,
+    MatchAll,
+    MatchType(Type)
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Expr(Expr),
-    Let { name: String, value: Option<Box<Expr>>, type_annotation: Type, local_index: Cell<Option<u32>> },
-    Const { name: String, value: Box<Expr>, type_annotation: Type, local_index: Cell<Option<u32>> },
-    Return(Option<Box<Expr>>),
+    Let { name: String, ty: Type, value: Option<Expr> },
+    Const { name: String, ty: Type, value: Expr },
+    Return(Option<Expr>),
     Break,
     Continue,
-    If { condition: Box<Expr>, consequent: Vec<Statement>, alternate: Option<Vec<Statement>> },
-    For { initializer: Box<Statement>, condition: Box<Expr>, increment: Box<Statement>, body: Vec<Statement> },
-    While { condition: Box<Expr>, body: Vec<Statement> },
-    Function { name: String, params: Vec<(String, Type)>, return_type: Type, body: Vec<Statement>, local_types: RefCell<Vec<Type>>, function_index: Cell<Option<u32>>, local_index: Cell<Option<u32>> },
+    If { condition: Expr, then_block: Vec<Statement>, else_block: Option<Vec<Statement>> },
+    For { init: Box<Statement>, condition: Expr, update: Box<Statement>, body: Vec<Statement> },
+    While { condition: Expr, body: Vec<Statement> },
+    Function { name: String, params: Vec<(String, Type)>, returns: Type, body: Vec<Statement> },
     Struct { name: String, fields: Vec<(String, Type)> },
-    Error {name: String},
-    Match { expr: Box<Expr>, arms: Vec<(String, Vec<Statement>)> },
-    Print(Box<Expr>),
+    Error { name: String },
+    Print(Expr),
+    Produce(Expr),
 }

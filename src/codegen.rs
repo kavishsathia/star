@@ -1,9 +1,7 @@
 use std::{fmt::Binary, mem::discriminant};
 
 use wasm_encoder::{
-    CodeSection, ConstExpr, ElementSection, Elements, ExportSection, Function, FunctionSection,
-    ImportSection, Instruction, Module, RefType, TableSection, TableType, TypeSection,
-    ValType, EntityType,
+    CodeSection, ConstExpr, ElementSection, Elements, EntityType, ExportSection, Function, FunctionSection, ImportSection, Instruction, MemArg, Module, RefType, TableSection, TableType, TypeSection, ValType
 };
 use crate::ast::{BinaryOp, Expr, Program, Statement, Type, TypeKind, UnaryOp};
 
@@ -53,6 +51,13 @@ impl Codegen {
         imports.import("alloc", "init", EntityType::Function(1));
         imports.import("alloc", "register", EntityType::Function(2));
         imports.import("alloc", "falloc", EntityType::Function(3));
+        imports.import("alloc", "memory", EntityType::Memory(wasm_encoder::MemoryType {
+            minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        }));
         module.section(&imports);
 
         let mut functions = FunctionSection::new();
@@ -244,11 +249,25 @@ impl Codegen {
                     table_index: 0,
                 });
             }
-            Expr::Init { name: _, fields: _, type_index } => {
+            Expr::Init { name: _, fields, type_index } => {
                 type_index.get().map(|idx| {
                     f.instruction(&Instruction::I32Const(idx as i32));
                     f.instruction(&Instruction::Call(3));
-                });
+
+                    f.instruction(&Instruction::LocalTee(0));
+
+                    let mut offset = 0;
+                    for (field_name, field_expr) in fields {
+                        self.compile_expr(field_expr, f);
+                        f.instruction(&Instruction::I64Store(MemArg { offset, align: 3, memory_index: 0 }));
+                        f.instruction(&Instruction::LocalGet(0));
+                        offset += 8;
+                    }
+            });
+            }
+            Expr::MemberAccess { object, field } => {
+                self.compile_expr(object, f);
+                f.instruction(&Instruction::I64Load(MemArg { offset: 0, align: 3, memory_index: 0 }));
             }
             _ => {
                 panic!("Unsupported expression type in codegen");

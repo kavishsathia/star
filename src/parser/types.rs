@@ -7,30 +7,29 @@ impl<'a> Parser<'a> {
         let kind = if self.check(&Token::Identifier) {
             let name = self.current_slice.clone();
             self.advance();
-            TypeKind::Primitive(name)
+            match name.as_str() {
+                "integer" => TypeKind::Integer,
+                "float" => TypeKind::Float,
+                "boolean" => TypeKind::Boolean,
+                "string" => TypeKind::String,
+                _ => TypeKind::Struct { name },
+            }
         } else if self.match_token(&Token::LBrace) {
             let element = Box::new(self.parse_type());
-            if self.match_token(&Token::Colon) {
-                let value = Box::new(self.parse_type());
-                self.expect(&Token::RBrace);
-                TypeKind::Dict { key_type: element, value_type: value }
-            } else {
-                self.expect(&Token::RBrace);
-                TypeKind::List(element)
-            }
+            self.expect(&Token::RBrace);
+            TypeKind::List { element }
         } else if self.match_token(&Token::LParenthesis) {
-            // (int, int : int)
-            let mut param_types = Vec::new();
+            let mut params = Vec::new();
             while !self.check(&Token::Colon) {
-                param_types.push(self.parse_type());
+                params.push(self.parse_type());
                 if self.check(&Token::Separator) {
                     self.advance();
                 }
             }
             self.expect(&Token::Colon);
-            let return_type = Box::new(self.parse_type());
+            let returns = Box::new(self.parse_type());
             self.expect(&Token::RParenthesis);
-            TypeKind::Function { param_types, return_type }
+            TypeKind::Function { params, returns }
         } else {
             panic!("Unexpected token in type annotation: {:?}", self.peek());
         };

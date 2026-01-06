@@ -48,9 +48,6 @@ pub enum Token {
 
     #[token("!!")]
     NotError,
-
-    #[token("!?!?")]
-    NotNullOrError,
     
     #[token("==")]
     Eq,
@@ -171,6 +168,15 @@ pub enum Token {
 
     #[token("new")]
     New,
+
+    #[token("as")]
+    As,
+
+    #[token("produce")]
+    Produce,
+
+    #[token("?!")]
+    NullOrError,
 
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
     Identifier,
