@@ -79,17 +79,10 @@ impl TypeChecker {
     }
 
     pub fn is_numeric(&self, ty: &Type) -> bool {
-        if ty.kind != TypeKind::Primitive("integer".to_string())
-        && ty.kind != TypeKind::Primitive("float".to_string()) {
-            return false;
-        }
-        true
+        matches!(ty.kind, TypeKind::Integer | TypeKind::Float)
     }
 
     pub fn is_boolean(&self, ty: &Type) -> bool {
-        if ty.kind != TypeKind::Primitive("boolean".to_string()) {
-            return false;
-        }
-        true
+        matches!(ty.kind, TypeKind::Boolean)
     }
 }

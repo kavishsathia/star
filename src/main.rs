@@ -2,7 +2,11 @@ mod lexer;
 mod ast;
 mod parser;
 mod ir;
+mod tast;
+mod types;
+
 use parser::Parser;
+use types::TypeChecker;
 
 fn main() {
     let source = r#"
@@ -46,5 +50,13 @@ fn main() {
 
     let mut parser = Parser::new(source);
     let program = parser.parse_program();
-    println!("AST: {:#?}", program);
+    println!("AST: {:#?}\n", program);
+
+    println!("Type checking...\n");
+
+    let mut type_checker = TypeChecker::new();
+    match type_checker.check_program(&program) {
+        Ok(typed_program) => println!("TypedAST: {:#?}", typed_program),
+        Err(e) => println!("Type error: {}", e.message),
+    }
 }

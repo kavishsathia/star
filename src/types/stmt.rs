@@ -1,54 +1,69 @@
-use crate::ast::{Program, Statement, Type, TypeKind};
+use crate::ast::{self, Type, TypeKind};
+use crate::tast::{self, TypedStatement, TypedProgram};
 use super::{TypeChecker, TypeError};
 
 impl TypeChecker {
-    pub fn check_stmt(&mut self, stmt: &Statement) -> Result<(), TypeError> {
+    pub fn check_stmt(&mut self, stmt: &ast::Statement) -> Result<TypedStatement, TypeError> {
         match stmt {
-            Statement::Expr(expr) => {
-                self.check_expr(expr)?;
-                Ok(())
+            ast::Statement::Expr(expr) => {
+                let typed_expr = self.check_expr(expr)?;
+                Ok(TypedStatement::Expr(typed_expr))
             }
-            Statement::Let { name, value, type_annotation, local_index } => {
-                if let Some(init_expr) = value {
-                    let init_type = self.check_expr(init_expr)?;
-                    if !self.is_assignable(&init_type, type_annotation) {
+
+            ast::Statement::Let { name, value, ty } => {
+                let typed_value = if let Some(init_expr) = value {
+                    let typed_init = self.check_expr(init_expr)?;
+                    if !self.is_assignable(&typed_init.ty, ty) {
                         return Err(TypeError::new(format!(
                             "Incompatible type in let binding for '{}'",
                             name
                         )));
                     }
+                    Some(typed_init)
                 } else {
-                    if !type_annotation.nullable {
+                    if !ty.nullable {
                         return Err(TypeError::new(format!(
                             "Let binding for '{}' without initializer must be nullable",
                             name
                         )));
                     }
-                }
-                self.define(name.clone(), type_annotation.clone());
-                Ok(())
+                    None
+                };
+                self.define(name.clone(), ty.clone());
+                Ok(TypedStatement::Let {
+                    name: name.clone(),
+                    ty: ty.clone(),
+                    value: typed_value,
+                })
             }
-            Statement::Const { name, value, type_annotation, local_index } => {
-                let value_type = self.check_expr(value)?;
-                if !self.is_assignable(&value_type, type_annotation) {
+
+            ast::Statement::Const { name, value, ty } => {
+                let typed_value = self.check_expr(value)?;
+                if !self.is_assignable(&typed_value.ty, ty) {
                     return Err(TypeError::new(format!(
                         "Incompatible type in const binding for '{}'",
                         name
                     )));
                 }
-                self.define(name.clone(), type_annotation.clone());
-                Ok(())
+                self.define(name.clone(), ty.clone());
+                Ok(TypedStatement::Const {
+                    name: name.clone(),
+                    ty: ty.clone(),
+                    value: typed_value,
+                })
             }
-            Statement::Return(expr) => {
-                if let Some(ret_expr) = expr {
-                    let ret_type = self.check_expr(ret_expr)?;
+
+            ast::Statement::Return(expr) => {
+                let typed_expr = if let Some(ret_expr) = expr {
+                    let typed_ret = self.check_expr(ret_expr)?;
                     if let Some(expected_type) = &self.current_return_type {
-                        if !self.is_assignable(&ret_type, expected_type) {
+                        if !self.is_assignable(&typed_ret.ty, expected_type) {
                             return Err(TypeError::new("Incompatible return type"));
                         }
                     } else {
                         return Err(TypeError::new("Return statement outside of function"));
                     }
+                    Some(typed_ret)
                 } else {
                     if let Some(expected_type) = &self.current_return_type {
                         if !expected_type.nullable {
@@ -57,74 +72,97 @@ impl TypeChecker {
                     } else {
                         return Err(TypeError::new("Return statement outside of function"));
                     }
-                }
-                Ok(())
+                    None
+                };
+                Ok(TypedStatement::Return(typed_expr))
             }
-            Statement::Break => {
-                Ok(())
-            }
-            Statement::Continue => {
-                Ok(())
-            }
-            Statement::If { condition, consequent, alternate } => {
-                let cond_type = self.check_expr(condition)?;
-                if !self.is_boolean(&cond_type) || cond_type.nullable || cond_type.errorable {
+
+            ast::Statement::Break => Ok(TypedStatement::Break),
+
+            ast::Statement::Continue => Ok(TypedStatement::Continue),
+
+            ast::Statement::If { condition, then_block, else_block } => {
+                let typed_condition = self.check_expr(condition)?;
+                if !self.is_boolean(&typed_condition.ty) || typed_condition.ty.nullable || typed_condition.ty.errorable {
                     return Err(TypeError::new("If condition must be a non-nullable, non-errorable boolean"));
                 }
 
                 self.push_scope();
-                for stmt in consequent {
-                    self.check_stmt(stmt)?;
-                }
+                let typed_then: Vec<TypedStatement> = then_block
+                    .iter()
+                    .map(|s| self.check_stmt(s))
+                    .collect::<Result<_, _>>()?;
                 self.pop_scope();
 
-                if let Some(alt_stmts) = alternate {
+                let typed_else = if let Some(alt_stmts) = else_block {
                     self.push_scope();
-                    for stmt in alt_stmts {
-                        self.check_stmt(stmt)?;
-                    }
+                    let typed: Vec<TypedStatement> = alt_stmts
+                        .iter()
+                        .map(|s| self.check_stmt(s))
+                        .collect::<Result<_, _>>()?;
                     self.pop_scope();
-                }
+                    Some(typed)
+                } else {
+                    None
+                };
 
-                Ok(())
+                Ok(TypedStatement::If {
+                    condition: typed_condition,
+                    then_block: typed_then,
+                    else_block: typed_else,
+                })
             }
-            Statement::For { initializer, condition, increment, body } => {
-                self.push_scope();
-                self.check_stmt(initializer)?;
 
-                let cond_type = self.check_expr(condition)?;
-                if !self.is_boolean(&cond_type) || cond_type.nullable || cond_type.errorable {
+            ast::Statement::For { init, condition, update, body } => {
+                self.push_scope();
+                let typed_init = self.check_stmt(init)?;
+
+                let typed_condition = self.check_expr(condition)?;
+                if !self.is_boolean(&typed_condition.ty) || typed_condition.ty.nullable || typed_condition.ty.errorable {
                     return Err(TypeError::new("For loop condition must be a non-nullable, non-errorable boolean"));
                 }
 
-                for stmt in body {
-                    self.check_stmt(stmt)?;
-                }
+                let typed_body: Vec<TypedStatement> = body
+                    .iter()
+                    .map(|s| self.check_stmt(s))
+                    .collect::<Result<_, _>>()?;
 
-                self.check_stmt(increment)?;
+                let typed_update = self.check_stmt(update)?;
 
                 self.pop_scope();
-                Ok(())
+
+                Ok(TypedStatement::For {
+                    init: Box::new(typed_init),
+                    condition: typed_condition,
+                    update: Box::new(typed_update),
+                    body: typed_body,
+                })
             }
-            Statement::While { condition, body } => {
-                let cond_type = self.check_expr(condition)?;
-                if !self.is_boolean(&cond_type) || cond_type.nullable || cond_type.errorable {
+
+            ast::Statement::While { condition, body } => {
+                let typed_condition = self.check_expr(condition)?;
+                if !self.is_boolean(&typed_condition.ty) || typed_condition.ty.nullable || typed_condition.ty.errorable {
                     return Err(TypeError::new("While loop condition must be a non-nullable, non-errorable boolean"));
                 }
 
                 self.push_scope();
-                for stmt in body {
-                    self.check_stmt(stmt)?;
-                }
+                let typed_body: Vec<TypedStatement> = body
+                    .iter()
+                    .map(|s| self.check_stmt(s))
+                    .collect::<Result<_, _>>()?;
                 self.pop_scope();
 
-                Ok(())
+                Ok(TypedStatement::While {
+                    condition: typed_condition,
+                    body: typed_body,
+                })
             }
-            Statement::Function { name, params, return_type, body, local_types, function_index, local_index } => {
+
+            ast::Statement::Function { name, params, returns, body } => {
                 let func_type = Type {
                     kind: TypeKind::Function {
-                        param_types: params.iter().map(|(_, ty)| ty.clone()).collect(),
-                        return_type: Box::new(return_type.clone()),
+                        params: params.iter().map(|(_, ty)| ty.clone()).collect(),
+                        returns: Box::new(returns.clone()),
                     },
                     nullable: false,
                     errorable: false,
@@ -137,69 +175,61 @@ impl TypeChecker {
                 }
 
                 let prev_return_type = self.current_return_type.clone();
-                self.current_return_type = Some(return_type.clone());
+                self.current_return_type = Some(returns.clone());
 
-                for stmt in body {
-                    self.check_stmt(stmt)?;
-                }
+                let typed_body: Vec<TypedStatement> = body
+                    .iter()
+                    .map(|s| self.check_stmt(s))
+                    .collect::<Result<_, _>>()?;
 
                 self.current_return_type = prev_return_type;
                 self.pop_scope();
 
-                Ok(())
+                Ok(TypedStatement::Function {
+                    name: name.clone(),
+                    params: params.clone(),
+                    returns: returns.clone(),
+                    body: typed_body,
+                })
             }
-            Statement::Struct { name, fields } => {
+
+            ast::Statement::Struct { name, fields } => {
                 self.structs.insert(name.clone(), (fields.clone(), self.next_struct_index));
-                Ok(())
+                self.next_struct_index += 1;
+                Ok(TypedStatement::Struct {
+                    name: name.clone(),
+                    fields: fields.clone(),
+                })
             }
-            Statement::Error { name } => {
+
+            ast::Statement::Error { name } => {
                 self.errors.insert(name.clone());
-                Ok(())
+                Ok(TypedStatement::Error { name: name.clone() })
             }
-            Statement::Match { expr, arms } => {
-                todo!()
+
+            ast::Statement::Produce(expr) => {
+                let typed_expr = self.check_expr(expr)?;
+                Ok(TypedStatement::Produce(typed_expr))
             }
-            Statement::Print(expr) => {
-                let expr_type = self.check_expr(expr)?;
-                if expr_type.nullable || expr_type.errorable {
+
+            ast::Statement::Print(expr) => {
+                let typed_expr = self.check_expr(expr)?;
+                if typed_expr.ty.nullable || typed_expr.ty.errorable {
                     return Err(TypeError::new("Cannot print nullable or errorable expression"));
                 }
-                Ok(())
+                Ok(TypedStatement::Print(typed_expr))
             }
         }
     }
 
+    pub fn check_program(&mut self, program: &ast::Program) -> Result<TypedProgram, TypeError> {
+        let typed_statements: Vec<TypedStatement> = program.statements
+            .iter()
+            .map(|s| self.check_stmt(s))
+            .collect::<Result<_, _>>()?;
 
-    pub fn check_program(&mut self, program: Program) -> Result<Program, TypeError> {
-        for stmt in &program.statements {
-            self.check_stmt(stmt)?;
-        }
-
-        let struct_types: Vec<(String, u32)> = self.structs.iter().map(|(name, fields)| {
-            let size = fields.0.iter().map(|(_, ty)| Self::type_size(ty)).sum();
-            (name.clone(), size)
-        }).collect();
-
-        Ok(Program {
-            statements: program.statements,
-            function_signatures: program.function_signatures,
-            struct_types,
+        Ok(TypedProgram {
+            statements: typed_statements,
         })
-    }
-
-    fn type_size(ty: &Type) -> u32 {
-        match &ty.kind {
-            TypeKind::Primitive(name) => match name.as_str() {
-                "integer" => 8,
-                "float" => 8,
-                "boolean" => 4,
-                "string" => 4,
-                _ => 4,
-            },
-            TypeKind::List(_) => 4, 
-            TypeKind::Dict { .. } => 4,
-            TypeKind::Function { .. } => 4,
-            _ => 4,
-        }
     }
 }

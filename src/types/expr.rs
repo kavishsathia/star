@@ -1,167 +1,159 @@
-use crate::ast::{BinaryOp, Expr, Type, TypeKind, UnaryOp};
+use crate::ast::{self, Type, TypeKind};
+use crate::tast::{self, TypedExpr};
 use super::{TypeChecker, TypeError};
 
 impl TypeChecker {
-    pub fn check_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
+    pub fn check_expr(&mut self, expr: &ast::Expr) -> Result<TypedExpr, TypeError> {
         match expr {
-            Expr::Null => Ok(Type {
-                kind: TypeKind::Null,
-                nullable: true,
-                errorable: false,
+            ast::Expr::Null => Ok(TypedExpr {
+                expr: tast::Expr::Null,
+                ty: Type {
+                    kind: TypeKind::Null,
+                    nullable: true,
+                    errorable: false,
+                },
             }),
 
-            Expr::Integer(_) => {
-                Ok(Type {
-                    kind: TypeKind::Primitive("integer".to_string()),
+            ast::Expr::Integer(n) => Ok(TypedExpr {
+                expr: tast::Expr::Integer(*n),
+                ty: Type {
+                    kind: TypeKind::Integer,
                     nullable: false,
                     errorable: false,
-                })
-            }
-            Expr::Float(_) => {
-                Ok(Type {
-                    kind: TypeKind::Primitive("float".to_string()),
+                },
+            }),
+
+            ast::Expr::Float(n) => Ok(TypedExpr {
+                expr: tast::Expr::Float(*n),
+                ty: Type {
+                    kind: TypeKind::Float,
                     nullable: false,
                     errorable: false,
-                })
-            }
-            Expr::String(_) => {
-                Ok(Type {
-                    kind: TypeKind::Primitive("string".to_string()),
+                },
+            }),
+
+            ast::Expr::String(s) => Ok(TypedExpr {
+                expr: tast::Expr::String(s.clone()),
+                ty: Type {
+                    kind: TypeKind::String,
                     nullable: false,
                     errorable: false,
-                })
-            }
-            Expr::Boolean(_) => {
-                Ok(Type {
-                    kind: TypeKind::Primitive("boolean".to_string()),
+                },
+            }),
+
+            ast::Expr::Boolean(b) => Ok(TypedExpr {
+                expr: tast::Expr::Boolean(*b),
+                ty: Type {
+                    kind: TypeKind::Boolean,
                     nullable: false,
                     errorable: false,
-                })
-            }
-            Expr::Identifier { name, local_index } => {
+                },
+            }),
+
+            ast::Expr::Identifier(name) => {
                 match self.lookup(name) {
-                    Some(ty) => Ok(ty.clone()),
+                    Some(ty) => Ok(TypedExpr {
+                        expr: tast::Expr::Identifier(name.clone()),
+                        ty: ty.clone(),
+                    }),
                     None => Err(TypeError::new(format!("Undefined identifier '{}'", name))),
                 }
             }
-            Expr::List(elements) => {
+
+            ast::Expr::List(elements) => {
                 if elements.is_empty() {
-                    return Ok(Type {
-                        kind: TypeKind::List(Box::new(Type {
-                            kind: TypeKind::Unknown,
-                            nullable: false,
-                            errorable: false,
-                        })),
+                    let ty = Type {
+                        kind: TypeKind::List {
+                            element: Box::new(Type {
+                                kind: TypeKind::Unknown,
+                                nullable: false,
+                                errorable: false,
+                            }),
+                        },
                         nullable: false,
                         errorable: false,
-                    });
+                    };
+                    Ok(TypedExpr {
+                        expr: tast::Expr::List(vec![]),
+                        ty,
+                    })
                 } else {
-                    let mut first_type = self.check_expr(&elements[0])?;
+                    let mut typed_elements = Vec::new();
+                    let first_typed = self.check_expr(&elements[0])?;
+                    let mut element_type = first_typed.ty.clone();
+                    typed_elements.push(first_typed);
+
                     for elem in elements.iter().skip(1) {
-                        let elem_type = self.check_expr(elem)?;
-                        if self.is_assignable(&first_type, &elem_type) {
-                            first_type = elem_type;
-                        } else if self.is_assignable(&elem_type, &first_type) {
-                            continue;
-                        } else {
+                        let typed_elem = self.check_expr(elem)?;
+                        if self.is_assignable(&element_type, &typed_elem.ty) {
+                            element_type = typed_elem.ty.clone();
+                        } else if !self.is_assignable(&typed_elem.ty, &element_type) {
                             return Err(TypeError::new("Incompatible types in list literal"));
                         }
+                        typed_elements.push(typed_elem);
                     }
-                    Ok(Type {
-                        kind: TypeKind::List(Box::new(first_type)),
-                        nullable: false,
-                        errorable: false,
+
+                    Ok(TypedExpr {
+                        expr: tast::Expr::List(typed_elements),
+                        ty: Type {
+                            kind: TypeKind::List { element: Box::new(element_type) },
+                            nullable: false,
+                            errorable: false,
+                        },
                     })
                 }
             }
-            Expr::Dict(pairs) => {
-                if pairs.is_empty() {
-                    return Ok(Type {
-                        kind: TypeKind::Dict {
-                            key_type: Box::new(Type {
-                                kind: TypeKind::Unknown,
-                                nullable: false,
-                                errorable: false,
-                            }),
-                            value_type: Box::new(Type {
-                                kind: TypeKind::Unknown,
-                                nullable: false,
-                                errorable: false,
-                            }),
-                        },
-                        nullable: false,
-                        errorable: false,
-                    });
-                } else {
-                    let mut first_key_type = self.check_expr(&pairs[0].0)?;
-                    let mut first_value_type = self.check_expr(&pairs[0].1)?;
 
-                    for (key, value) in pairs.iter().skip(1) {
-                        let key_type = self.check_expr(key)?;
-                        let value_type = self.check_expr(value)?;
+            ast::Expr::Field { object, field } => {
+                let typed_object = self.check_expr(object)?;
 
-                        if self.is_assignable(&first_key_type, &key_type) {
-                            first_key_type = key_type;
-                        } else if self.is_assignable(&key_type, &first_key_type) {
-                            continue;
-                        } else {
-                            return Err(TypeError::new("Incompatible key types in dict literal"));
-                        }
-
-                        if self.is_assignable(&first_value_type, &value_type) {
-                            first_value_type = value_type;
-                        } else if self.is_assignable(&value_type, &first_value_type) {
-                            continue;
-                        } else {
-                            return Err(TypeError::new("Incompatible value types in dict literal"));
-                        }
+                if let TypeKind::Struct { name } = &typed_object.ty.kind {
+                    if typed_object.ty.nullable || typed_object.ty.errorable {
+                        return Err(TypeError::new("Field access on nullable or errorable type"));
                     }
-
-                    Ok(Type {
-                        kind: TypeKind::Dict {
-                            key_type: Box::new(first_key_type),
-                            value_type: Box::new(first_value_type),
-                        },
-                        nullable: false,
-                        errorable: false,
-                    })
-                }
-            }
-            Expr::MemberAccess { object, field } => {
-                let struct_type = self.check_expr(object)?;
-
-                if let TypeKind::Primitive(a) = struct_type.kind && !struct_type.nullable && !struct_type.errorable {
-                    self.structs.get(&a)
+                    let field_type = self.structs.get(name)
                         .and_then(|fields| fields.0.iter().find(|(fname, _)| fname == field))
                         .map(|(_, ftype)| ftype.clone())
-                        .ok_or_else(|| TypeError::new(format!("Type '{}' has no field '{}'", a, field)))
+                        .ok_or_else(|| TypeError::new(format!("Type '{}' has no field '{}'", name, field)))?;
+
+                    Ok(TypedExpr {
+                        expr: tast::Expr::Field {
+                            object: Box::new(typed_object),
+                            field: field.clone(),
+                        },
+                        ty: field_type,
+                    })
                 } else {
-                    Err(TypeError::new("Member access on non-struct type"))
+                    Err(TypeError::new("Field access on non-struct type"))
                 }
             }
-            Expr::KeyAccess { dict, key } => {
-                let dict_key_type = self.check_expr(key)?;
-                let dict_type = self.check_expr(dict)?;
 
-                if let TypeKind::Dict { key_type, value_type } = &dict_type.kind && !dict_type.nullable && !dict_type.errorable {
-                    if self.is_assignable(&dict_key_type, key_type) {
-                        Ok(value_type.as_ref().clone())
-                    } else {
-                        Err(TypeError::new("Incompatible key type for dict access"))
+            ast::Expr::Index { object, key } => {
+                let typed_key = self.check_expr(key)?;
+                let typed_object = self.check_expr(object)?;
+
+                if let TypeKind::List { element } = &typed_object.ty.kind {
+                    if typed_object.ty.nullable || typed_object.ty.errorable {
+                        return Err(TypeError::new("Index access on nullable or errorable type"));
                     }
-                } else if let TypeKind::List(inner_type) = &dict_type.kind && !dict_type.nullable && !dict_type.errorable {
-                    if dict_key_type.kind == TypeKind::Primitive("integer".to_string())
-                        && !dict_key_type.nullable
-                        && !dict_key_type.errorable {
-                            Ok(inner_type.as_ref().clone())
+                    if typed_key.ty.kind == TypeKind::Integer && !typed_key.ty.nullable && !typed_key.ty.errorable {
+                        let elem_type = element.as_ref().clone();
+                        Ok(TypedExpr {
+                            expr: tast::Expr::Index {
+                                object: Box::new(typed_object),
+                                key: Box::new(typed_key),
+                            },
+                            ty: elem_type,
+                        })
                     } else {
                         Err(TypeError::new("List index must be of type integer"))
                     }
                 } else {
-                    Err(TypeError::new("Key access on non-dict and non-list type"))
+                    Err(TypeError::new("Index access on non-list type"))
                 }
             }
-            Expr::Init { name, fields, type_index } => {
+
+            ast::Expr::New { name, fields } => {
                 let struct_fields = self.structs.get(name)
                     .ok_or_else(|| TypeError::new(format!("Undefined struct '{}'", name)))?
                     .clone();
@@ -175,17 +167,19 @@ impl TypeChecker {
                     )));
                 }
 
+                let mut typed_fields = Vec::new();
                 for (field_name, field_expr) in fields {
                     let expected_field = struct_fields.0.iter().find(|(fname, _)| fname == field_name);
                     match expected_field {
                         Some((_, expected_type)) => {
-                            let expr_type = self.check_expr(field_expr)?;
-                            if !self.is_assignable(&expr_type, expected_type) {
+                            let typed_expr = self.check_expr(field_expr)?;
+                            if !self.is_assignable(&typed_expr.ty, expected_type) {
                                 return Err(TypeError::new(format!(
                                     "Incompatible type for field '{}' in struct '{}'",
                                     field_name, name
                                 )));
                             }
+                            typed_fields.push((field_name.clone(), typed_expr));
                         }
                         None => {
                             return Err(TypeError::new(format!(
@@ -196,114 +190,152 @@ impl TypeChecker {
                     }
                 }
 
-                type_index.set(Some(struct_fields.1 as u32));
-
-                Ok(Type {
-                    kind: TypeKind::Primitive(name.clone()),
-                    nullable: false,
-                    errorable: false,
+                Ok(TypedExpr {
+                    expr: tast::Expr::New {
+                        name: name.clone(),
+                        fields: typed_fields,
+                    },
+                    ty: Type {
+                        kind: TypeKind::Struct { name: name.clone() },
+                        nullable: false,
+                        errorable: false,
+                    },
                 })
             }
-            Expr::Binary { left, op, right } => {
-                self.check_binary(left, op, right)
-            }
-            Expr::Unary { op, expr } => {
-                self.check_unary(op, expr)
-            }
-            Expr::Call { callee, args } => {
-                let callee_type = self.check_expr(callee)?;
 
-                if let TypeKind::Function { param_types, return_type } = callee_type.kind && !callee_type.nullable && !callee_type.errorable {
-                    if param_types.len() != args.len() {
+            ast::Expr::Binary { left, op, right } => {
+                let typed_left = self.check_expr(left)?;
+                let typed_right = self.check_expr(right)?;
+                let result_ty = self.check_binary_types(&typed_left.ty, op, &typed_right.ty)?;
+
+                Ok(TypedExpr {
+                    expr: tast::Expr::Binary {
+                        left: Box::new(typed_left),
+                        op: op.clone(),
+                        right: Box::new(typed_right),
+                    },
+                    ty: result_ty,
+                })
+            }
+
+            ast::Expr::Unary { op, expr } => {
+                let typed_expr = self.check_expr(expr)?;
+                let result_ty = self.check_unary_types(op, &typed_expr.ty)?;
+
+                Ok(TypedExpr {
+                    expr: tast::Expr::Unary {
+                        op: op.clone(),
+                        expr: Box::new(typed_expr),
+                    },
+                    ty: result_ty,
+                })
+            }
+
+            ast::Expr::Call { callee, args } => {
+                let typed_callee = self.check_expr(callee)?;
+
+                if let TypeKind::Function { params, returns } = &typed_callee.ty.kind {
+                    if typed_callee.ty.nullable || typed_callee.ty.errorable {
+                        return Err(TypeError::new("Cannot call nullable or errorable function"));
+                    }
+                    if params.len() != args.len() {
                         return Err(TypeError::new("Incorrect number of arguments in function call"));
                     }
 
+                    let params = params.clone();
+                    let return_ty = returns.as_ref().clone();
+
+                    let mut typed_args = Vec::new();
                     for (i, arg) in args.iter().enumerate() {
-                        let arg_type = self.check_expr(arg)?;
-                        if !self.is_assignable(&arg_type, &param_types[i]) {
+                        let typed_arg = self.check_expr(arg)?;
+                        if !self.is_assignable(&typed_arg.ty, &params[i]) {
                             return Err(TypeError::new("Incompatible argument type in function call"));
                         }
+                        typed_args.push(typed_arg);
                     }
 
-                    Ok(*return_type)
+                    Ok(TypedExpr {
+                        expr: tast::Expr::Call {
+                            callee: Box::new(typed_callee),
+                            args: typed_args,
+                        },
+                        ty: return_ty,
+                    })
                 } else {
                     Err(TypeError::new("Callee is not a function"))
                 }
             }
-            Expr::NotNull(expr) => {
-                if self.check_expr(expr)?.nullable {
-                    let inner_type = self.check_expr(expr)?;
-                    Ok(Type {
-                        kind: inner_type.kind,
+
+            ast::Expr::Match { expr, binding, arms } => {
+                todo!()
+            }
+
+            ast::Expr::UnwrapNull(inner) => {
+                let typed_inner = self.check_expr(inner)?;
+                if typed_inner.ty.nullable {
+                    let result_ty = Type {
+                        kind: typed_inner.ty.kind.clone(),
                         nullable: false,
-                        errorable: inner_type.errorable,
+                        errorable: typed_inner.ty.errorable,
+                    };
+                    Ok(TypedExpr {
+                        expr: tast::Expr::UnwrapNull(Box::new(typed_inner)),
+                        ty: result_ty,
                     })
                 } else {
                     Err(TypeError::new("Expression is not nullable"))
                 }
             }
-            Expr::NotError(expr) => {
-                if self.check_expr(expr)?.errorable {
-                    let inner_type = self.check_expr(expr)?;
-                    Ok(Type {
-                        kind: inner_type.kind,
-                        nullable: inner_type.nullable,
+
+            ast::Expr::UnwrapError(inner) => {
+                let typed_inner = self.check_expr(inner)?;
+                if typed_inner.ty.errorable {
+                    let result_ty = Type {
+                        kind: typed_inner.ty.kind.clone(),
+                        nullable: typed_inner.ty.nullable,
                         errorable: false,
+                    };
+                    Ok(TypedExpr {
+                        expr: tast::Expr::UnwrapError(Box::new(typed_inner)),
+                        ty: result_ty,
                     })
                 } else {
                     Err(TypeError::new("Expression is not errorable"))
                 }
             }
-            Expr::NotNullOrError(expr) => {
-                let inner_type = self.check_expr(expr)?;
-                if inner_type.nullable && inner_type.errorable {
-                    Ok(Type {
-                        kind: inner_type.kind,
-                        nullable: false,
-                        errorable: false,
-                    })
-                } else {
-                    Err(TypeError::new("Expression is neither nullable nor errorable"))
-                }
-            }
         }
     }
 
-    pub fn check_binary(&mut self, left: &Expr, op: &BinaryOp, right: &Expr) -> Result<Type, TypeError> {
-        let left_ty = self.check_expr(left)?;
-        let right_ty = self.check_expr(right)?;
-
+    fn check_binary_types(&self, left_ty: &Type, op: &ast::BinaryOp, right_ty: &Type) -> Result<Type, TypeError> {
         match op {
-            BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Power => {
-                if !self.is_numeric(&left_ty) || left_ty.nullable || left_ty.errorable {
+            ast::BinaryOp::Plus | ast::BinaryOp::Minus | ast::BinaryOp::Multiply | ast::BinaryOp::Divide | ast::BinaryOp::Power => {
+                if !self.is_numeric(left_ty) || left_ty.nullable || left_ty.errorable {
                     return Err(TypeError::new("Left operand must be a non-nullable, non-errorable numeric type"));
                 }
-                if !self.is_numeric(&right_ty) || right_ty.nullable || right_ty.errorable {
+                if !self.is_numeric(right_ty) || right_ty.nullable || right_ty.errorable {
                     return Err(TypeError::new("Right operand must be a non-nullable, non-errorable numeric type"));
                 }
-                // If either is float, result is float
-                let is_float = left_ty.kind == TypeKind::Primitive("float".to_string())
-                    || right_ty.kind == TypeKind::Primitive("float".to_string());
+                let is_float = left_ty.kind == TypeKind::Float || right_ty.kind == TypeKind::Float;
                 Ok(Type {
-                    kind: TypeKind::Primitive(if is_float { "float" } else { "integer" }.to_string()),
+                    kind: if is_float { TypeKind::Float } else { TypeKind::Integer },
                     nullable: false,
                     errorable: false,
                 })
             }
-            BinaryOp::And | BinaryOp::Or => {
-                if !self.is_boolean(&left_ty) || left_ty.nullable || left_ty.errorable {
+            ast::BinaryOp::And | ast::BinaryOp::Or => {
+                if !self.is_boolean(left_ty) || left_ty.nullable || left_ty.errorable {
                     return Err(TypeError::new("Left operand must be a non-nullable, non-errorable boolean"));
                 }
-                if !self.is_boolean(&right_ty) || right_ty.nullable || right_ty.errorable {
+                if !self.is_boolean(right_ty) || right_ty.nullable || right_ty.errorable {
                     return Err(TypeError::new("Right operand must be a non-nullable, non-errorable boolean"));
                 }
                 Ok(Type {
-                    kind: TypeKind::Primitive("boolean".to_string()),
+                    kind: TypeKind::Boolean,
                     nullable: false,
                     errorable: false,
                 })
             }
-            BinaryOp::Eq | BinaryOp::Neq => {
+            ast::BinaryOp::Eq | ast::BinaryOp::Neq => {
                 if left_ty.nullable || left_ty.errorable || right_ty.nullable || right_ty.errorable {
                     return Err(TypeError::new("Cannot compare nullable or errorable types"));
                 }
@@ -311,72 +343,67 @@ impl TypeChecker {
                     return Err(TypeError::new("Cannot compare values of different types"));
                 }
                 Ok(Type {
-                    kind: TypeKind::Primitive("boolean".to_string()),
+                    kind: TypeKind::Boolean,
                     nullable: false,
                     errorable: false,
                 })
             }
-            BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Lte | BinaryOp::Gte => {
-                if !self.is_numeric(&left_ty) || left_ty.nullable || left_ty.errorable {
+            ast::BinaryOp::Lt | ast::BinaryOp::Gt | ast::BinaryOp::Lte | ast::BinaryOp::Gte => {
+                if !self.is_numeric(left_ty) || left_ty.nullable || left_ty.errorable {
                     return Err(TypeError::new("Left operand must be a non-nullable, non-errorable numeric type"));
                 }
-                if !self.is_numeric(&right_ty) || right_ty.nullable || right_ty.errorable {
+                if !self.is_numeric(right_ty) || right_ty.nullable || right_ty.errorable {
                     return Err(TypeError::new("Right operand must be a non-nullable, non-errorable numeric type"));
                 }
                 Ok(Type {
-                    kind: TypeKind::Primitive("boolean".to_string()),
+                    kind: TypeKind::Boolean,
                     nullable: false,
                     errorable: false,
                 })
             }
-            BinaryOp::BitwiseAnd | BinaryOp::BitwiseOr | BinaryOp::Xor | BinaryOp::Sll | BinaryOp::Srl => {
-                let int_kind = TypeKind::Primitive("integer".to_string());
-                if left_ty.kind != int_kind || left_ty.nullable || left_ty.errorable {
+            ast::BinaryOp::BitwiseAnd | ast::BinaryOp::BitwiseOr | ast::BinaryOp::Xor | ast::BinaryOp::Sll | ast::BinaryOp::Srl => {
+                if left_ty.kind != TypeKind::Integer || left_ty.nullable || left_ty.errorable {
                     return Err(TypeError::new("Left operand must be a non-nullable, non-errorable integer"));
                 }
-                if right_ty.kind != int_kind || right_ty.nullable || right_ty.errorable {
+                if right_ty.kind != TypeKind::Integer || right_ty.nullable || right_ty.errorable {
                     return Err(TypeError::new("Right operand must be a non-nullable, non-errorable integer"));
                 }
                 Ok(Type {
-                    kind: int_kind,
+                    kind: TypeKind::Integer,
                     nullable: false,
                     errorable: false,
                 })
             }
-            BinaryOp::Is => {
-                // Assignment: check that right is assignable to left
-                if !self.is_assignable(&right_ty, &left_ty) {
+            ast::BinaryOp::Is => {
+                if !self.is_assignable(right_ty, left_ty) {
                     return Err(TypeError::new("Cannot assign: incompatible types"));
                 }
-                Ok(left_ty)
+                Ok(left_ty.clone())
             }
         }
     }
 
-    pub fn check_unary(&mut self, op: &UnaryOp, expr: &Expr) -> Result<Type, TypeError> {
-        let expr_ty = self.check_expr(expr)?;
-
+    fn check_unary_types(&self, op: &ast::UnaryOp, expr_ty: &Type) -> Result<Type, TypeError> {
         match op {
-            UnaryOp::Not => {
-                if !self.is_boolean(&expr_ty) || expr_ty.nullable || expr_ty.errorable {
+            ast::UnaryOp::Not => {
+                if !self.is_boolean(expr_ty) || expr_ty.nullable || expr_ty.errorable {
                     return Err(TypeError::new("Operand must be a non-nullable, non-errorable boolean"));
                 }
                 Ok(Type {
-                    kind: TypeKind::Primitive("boolean".to_string()),
+                    kind: TypeKind::Boolean,
                     nullable: false,
                     errorable: false,
                 })
             }
-            UnaryOp::Minus => {
-                if !self.is_numeric(&expr_ty) || expr_ty.nullable || expr_ty.errorable {
+            ast::UnaryOp::Minus => {
+                if !self.is_numeric(expr_ty) || expr_ty.nullable || expr_ty.errorable {
                     return Err(TypeError::new("Operand must be a non-nullable, non-errorable numeric type"));
                 }
-                Ok(expr_ty)
+                Ok(expr_ty.clone())
             }
-            UnaryOp::Raise => {
-                // Raise makes the expression errorable
+            ast::UnaryOp::Raise => {
                 Ok(Type {
-                    kind: expr_ty.kind,
+                    kind: expr_ty.kind.clone(),
                     nullable: expr_ty.nullable,
                     errorable: true,
                 })
