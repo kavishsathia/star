@@ -17,8 +17,9 @@ impl TypeError {
 
 pub struct TypeChecker {
     scopes: Vec<HashMap<String, Type>>,
-    pub structs: HashMap<String, Vec<(String, Type)>>,
+    pub structs: HashMap<String, (Vec<(String, Type)>, i32)>,
     pub errors: HashSet<String>,
+    pub next_struct_index : i32,
     pub current_return_type: Option<Type>,
 }
 
@@ -29,6 +30,7 @@ impl TypeChecker {
             structs: HashMap::new(),
             errors: HashSet::new(),
             current_return_type: None,
+            next_struct_index: 0,
         }
     }
 

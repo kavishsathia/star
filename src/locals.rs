@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::ast::{Expr, Statement, Type, TypeKind};
+use crate::ast::{Expr, Program, Statement, Type, TypeKind};
 
 pub struct LocalsIndexer {
     scopes: Vec<HashMap<String, u32>>,
@@ -185,5 +185,12 @@ impl LocalsIndexer {
             Expr::NotNull(e) | Expr::NotError(e) | Expr::NotNullOrError(e) => self.index_expr(e),
             Expr::Null | Expr::Integer(_) | Expr::Float(_) | Expr::String(_) | Expr::Boolean(_) => Ok(()),
         }
+    }
+
+    pub fn index_program(&mut self, program: Program) -> Result<Program, String> {
+        for stmt in &program.statements {
+            self.index_stmt(stmt)?;
+        }
+        Ok(program)
     }
 }

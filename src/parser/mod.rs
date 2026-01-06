@@ -4,7 +4,7 @@ mod types;
 
 use logos::Logos;
 use crate::lexer::Token;
-use crate::ast::{BinaryOp, Expr, Statement, Type, TypeKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, Program, Statement, Type, TypeKind, UnaryOp};
 
 pub struct Parser<'a> {
     lexer: logos::Lexer<'a, Token>,
@@ -69,12 +69,16 @@ impl<'a> Parser<'a> {
         self.current.is_none()
     }
 
-    pub fn parse_program(&mut self) -> Vec<Statement> {
+    pub fn parse_program(&mut self) -> Program {
         let mut stmts = Vec::new();
         while !self.at_end() {
             stmts.push(self.parse_statement());
         }
-        stmts
+        Program {
+            statements: stmts,
+            function_signatures: Vec::new(),
+            struct_types: Vec::new(),
+        }
     }
 
     pub fn infix_binding_power(op: &Token) -> Option<(u8, u8)> {

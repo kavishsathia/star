@@ -13,6 +13,7 @@ impl Codegen {
     fn type_to_valtype(ty: &Type) -> ValType {
         match &ty.kind {
             TypeKind::Function { .. } => ValType::I32,
+            TypeKind::Primitive(name) if name == "Point" => ValType::I32,
             _ => ValType::I64,
         }
     }
@@ -23,14 +24,24 @@ impl Codegen {
         Codegen {}
     }
 
-    pub fn compile(&mut self, program: Program) -> Vec<u8> {
-        let stmts = program.statements;
-        let fn_sigs = program.function_signatures;
+    const IMPORT_COUNT: u32 = 4;
+
+    pub fn compile(&mut self, program: &Program) -> Vec<u8> {
+        let stmts = &program.statements;
+        let fn_sigs = &program.function_signatures;
         let mut module = Module::new();
 
         let mut types = TypeSection::new();
+        // Type 0: (i64) -> () for print_i64
         types.ty().function(vec![ValType::I64], vec![]);
-        for (_name, param_types, return_type) in &fn_sigs {
+        // Type 1: () -> () for init
+        types.ty().function(vec![], vec![]);
+        // Type 2: (i32) -> () for register
+        types.ty().function(vec![ValType::I32], vec![]);
+        // Type 3: (i32) -> i32 for falloc
+        types.ty().function(vec![ValType::I32], vec![ValType::I32]);
+        // Type 4+: Star function types
+        for (_name, param_types, return_type) in fn_sigs {
             let params: Vec<ValType> = param_types.iter().map(Self::type_to_valtype).collect();
             let results: Vec<ValType> = vec![Self::type_to_valtype(return_type)];
             types.ty().function(params, results);
@@ -39,11 +50,14 @@ impl Codegen {
 
         let mut imports = ImportSection::new();
         imports.import("env", "print_i64", EntityType::Function(0));
+        imports.import("alloc", "init", EntityType::Function(1));
+        imports.import("alloc", "register", EntityType::Function(2));
+        imports.import("alloc", "falloc", EntityType::Function(3));
         module.section(&imports);
 
         let mut functions = FunctionSection::new();
         for (i, _) in fn_sigs.iter().enumerate() {
-            functions.function((i + 1) as u32);
+            functions.function((i as u32 + Self::IMPORT_COUNT) as u32);
         }
         module.section(&functions);
 
@@ -60,11 +74,11 @@ impl Codegen {
         }
 
         let mut exports = ExportSection::new();
-        exports.export("main", wasm_encoder::ExportKind::Func, 1);
+        exports.export("main", wasm_encoder::ExportKind::Func, Self::IMPORT_COUNT);
         module.section(&exports);
 
         if !fn_sigs.is_empty() {
-            let func_indices: Vec<u32> = (1..=fn_sigs.len() as u32).collect();
+            let func_indices: Vec<u32> = (Self::IMPORT_COUNT..(Self::IMPORT_COUNT + fn_sigs.len() as u32)).collect();
             let mut elements = ElementSection::new();
             elements.active(
                 Some(0),
@@ -76,9 +90,9 @@ impl Codegen {
 
         let mut codes = CodeSection::new();
 
-        for stmt in &stmts {
+        for stmt in stmts {
             if let Statement::Function { .. } = stmt {
-                self.compile_function(stmt, &mut codes);
+                self.compile_function(stmt, &mut codes, program);
             }
         }
 
@@ -87,14 +101,23 @@ impl Codegen {
         module.finish()
     }
 
-    fn compile_function(&mut self, stmt: &Statement, codes: &mut CodeSection) {
-        if let Statement::Function { body, local_types, function_index, local_index, .. } = stmt {
+    fn compile_function(&mut self, stmt: &Statement, codes: &mut CodeSection, program: &Program) {
+        if let Statement::Function { name   , body, local_types, function_index, local_index, .. } = stmt {
             let local_types_vec = local_types.borrow();
             let locals: Vec<(u32, ValType)> = local_types_vec
                 .iter()
                 .map(|t| (1, Self::type_to_valtype(t)))
                 .collect();
             let mut f = Function::new(locals);
+
+            if name == "main" {
+                f.instruction(&Instruction::Call(1));
+                for struct_type in &program.struct_types {
+                    let (_name, size) = struct_type;
+                    f.instruction(&Instruction::I32Const(*size as i32));
+                    f.instruction(&Instruction::Call(2)); 
+                }
+            }
 
             for body_stmt in body {
                 self.compile_stmt(body_stmt, &mut f);
@@ -105,7 +128,7 @@ impl Codegen {
 
             for body_stmt in body {
                 if let Statement::Function { .. } = body_stmt {
-                    self.compile_function(body_stmt, codes);
+                    self.compile_function(body_stmt, codes, program);
                 }
             }
         } else {
@@ -217,11 +240,19 @@ impl Codegen {
                 }
                 self.compile_expr(callee, f);
                 f.instruction(&Instruction::CallIndirect {
-                    type_index: 2, // Placeholder type index
+                    type_index: 5, // Placeholder type index
                     table_index: 0,
                 });
             }
-            _ => panic!("Unsupported expression type"),
+            Expr::Init { name: _, fields: _, type_index } => {
+                type_index.get().map(|idx| {
+                    f.instruction(&Instruction::I32Const(idx as i32));
+                    f.instruction(&Instruction::Call(3));
+                });
+            }
+            _ => {
+                panic!("Unsupported expression type in codegen");
+            }
         }
     }
 
@@ -306,7 +337,7 @@ impl Codegen {
                 f.instruction(&Instruction::LocalSet(local_index.get().expect("Local index not set for function")));
             }
             Statement::Struct { name, fields } => {
-                todo!()
+                ()
             }
             Statement::Error { name } => {
                 todo!()

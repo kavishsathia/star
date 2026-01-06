@@ -1,4 +1,4 @@
-use crate::ast::{Statement, Type, TypeKind};
+use crate::ast::{Program, Statement, Type, TypeKind};
 use super::{TypeChecker, TypeError};
 
 impl TypeChecker {
@@ -149,7 +149,7 @@ impl TypeChecker {
                 Ok(())
             }
             Statement::Struct { name, fields } => {
-                self.structs.insert(name.clone(), fields.clone());
+                self.structs.insert(name.clone(), (fields.clone(), self.next_struct_index));
                 Ok(())
             }
             Statement::Error { name } => {
@@ -170,10 +170,36 @@ impl TypeChecker {
     }
 
 
-    pub fn check_program(&mut self, statements: &[Statement]) -> Result<(), TypeError> {
-        for stmt in statements {
+    pub fn check_program(&mut self, program: Program) -> Result<Program, TypeError> {
+        for stmt in &program.statements {
             self.check_stmt(stmt)?;
         }
-        Ok(())
+
+        let struct_types: Vec<(String, u32)> = self.structs.iter().map(|(name, fields)| {
+            let size = fields.0.iter().map(|(_, ty)| Self::type_size(ty)).sum();
+            (name.clone(), size)
+        }).collect();
+
+        Ok(Program {
+            statements: program.statements,
+            function_signatures: program.function_signatures,
+            struct_types,
+        })
+    }
+
+    fn type_size(ty: &Type) -> u32 {
+        match &ty.kind {
+            TypeKind::Primitive(name) => match name.as_str() {
+                "integer" => 8,
+                "float" => 8,
+                "boolean" => 4,
+                "string" => 4,
+                _ => 4,
+            },
+            TypeKind::List(_) => 4, 
+            TypeKind::Dict { .. } => 4,
+            TypeKind::Function { .. } => 4,
+            _ => 4,
+        }
     }
 }

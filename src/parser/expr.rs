@@ -119,7 +119,7 @@ impl<'a> Parser<'a> {
                     }
                 }
                 self.expect(&Token::RBrace);
-                Expr::Init { name, fields }
+                Expr::Init { name, fields, type_index: std::cell::Cell::new(None)}
             }
             _ => panic!("Unexpected token: {:?}", self.peek()),
         };

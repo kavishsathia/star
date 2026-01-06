@@ -4,6 +4,7 @@ use std::cell::{Cell, RefCell};
 pub struct Program {
     pub statements: Vec<Statement>,
     pub function_signatures: Vec<(String, Vec<Type>, Type)>,
+    pub struct_types: Vec<(String, u32)>,  // (name, size) for allocator
 }
 
 #[derive(Debug)]
@@ -65,7 +66,7 @@ pub enum Expr {
     Dict(Vec<(Expr, Expr)>), 
     MemberAccess { object: Box<Expr>, field: String },
     KeyAccess { dict: Box<Expr>, key: Box<Expr> },
-    Init { name: String, fields: Vec<(String, Expr)> },
+    Init { name: String, fields: Vec<(String, Expr)>, type_index: Cell<Option<u32>> },
     Binary { left: Box<Expr>, op: BinaryOp, right: Box<Expr> },
     Unary { op: UnaryOp, expr: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Expr> },

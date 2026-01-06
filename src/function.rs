@@ -48,7 +48,8 @@ impl FunctionIndexer {
         }
     }
 
-    pub fn index_program(&mut self, statements: Vec<Statement>) -> Result<Program, String> {
+    pub fn index_program(&mut self, program: Program) -> Result<Program, String> {
+        let statements = program.statements;
         let mut reordered = Vec::new();
         let mut main_idx = None;
         for (i, stmt) in statements.iter().enumerate() {
@@ -73,6 +74,10 @@ impl FunctionIndexer {
             self.index_stmt(stmt)?;
         }
 
-        Ok(Program { statements: reordered, function_signatures: self.function_signatures.clone() })
+        Ok(Program {
+            statements: reordered,
+            function_signatures: self.function_signatures.clone(),
+            struct_types: program.struct_types,
+        })
     }
 }

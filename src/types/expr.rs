@@ -132,7 +132,7 @@ impl TypeChecker {
 
                 if let TypeKind::Primitive(a) = struct_type.kind && !struct_type.nullable && !struct_type.errorable {
                     self.structs.get(&a)
-                        .and_then(|fields| fields.iter().find(|(fname, _)| fname == field))
+                        .and_then(|fields| fields.0.iter().find(|(fname, _)| fname == field))
                         .map(|(_, ftype)| ftype.clone())
                         .ok_or_else(|| TypeError::new(format!("Type '{}' has no field '{}'", a, field)))
                 } else {
@@ -161,22 +161,22 @@ impl TypeChecker {
                     Err(TypeError::new("Key access on non-dict and non-list type"))
                 }
             }
-            Expr::Init { name, fields } => {
+            Expr::Init { name, fields, type_index } => {
                 let struct_fields = self.structs.get(name)
                     .ok_or_else(|| TypeError::new(format!("Undefined struct '{}'", name)))?
                     .clone();
 
-                if struct_fields.len() != fields.len() {
+                if struct_fields.0.len() != fields.len() {
                     return Err(TypeError::new(format!(
                         "Struct '{}' expects {} fields, got {}",
                         name,
-                        struct_fields.len(),
+                        struct_fields.0.len(),
                         fields.len()
                     )));
                 }
 
                 for (field_name, field_expr) in fields {
-                    let expected_field = struct_fields.iter().find(|(fname, _)| fname == field_name);
+                    let expected_field = struct_fields.0.iter().find(|(fname, _)| fname == field_name);
                     match expected_field {
                         Some((_, expected_type)) => {
                             let expr_type = self.check_expr(field_expr)?;
@@ -195,6 +195,8 @@ impl TypeChecker {
                         }
                     }
                 }
+
+                type_index.set(Some(struct_fields.1 as u32));
 
                 Ok(Type {
                     kind: TypeKind::Primitive(name.clone()),
