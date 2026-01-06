@@ -49,7 +49,6 @@ pub enum TypeKind {
     Struct { name: String },
     Error { name: String },
     List { element: Box<Type> },
-    Dict { key: Box<Type>, value: Box<Type> },
     Function { params: Vec<Type>, returns: Box<Type> },
     Null,
     Unknown,

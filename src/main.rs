@@ -1,7 +1,7 @@
 mod lexer;
 mod ast;
 mod parser;
-
+mod ir;
 use parser::Parser;
 
 fn main() {
