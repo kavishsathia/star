@@ -6,13 +6,16 @@ mod ir;
 mod tast;
 mod types;
 mod locals;
+mod fast;
 mod flatten;
+mod irgen;
 
 use std::time::Instant;
 use parser::Parser;
 use types::TypeChecker;
 use locals::LocalsIndexer;
 use flatten::Flattener;
+use irgen::IRGenerator;
 
 fn main() {
     let source = r#"
@@ -66,7 +69,16 @@ fn main() {
             let flattened_program = flattener.flatten_program(&analyzed_program);
             let flatten_duration = flatten_start.elapsed();
             println!("FlattenedAST: {:#?}\n", flattened_program);
-            println!("Flattening took: {:?}", flatten_duration);
+            println!("Flattening took: {:?}\n", flatten_duration);
+
+            println!("Generating IR...\n");
+
+            let irgen_start = Instant::now();
+            let mut ir_generator = IRGenerator::new();
+            let ir_program = ir_generator.generate(&flattened_program);
+            let irgen_duration = irgen_start.elapsed();
+            println!("IR: {:#?}\n", ir_program);
+            println!("IR generation took: {:?}", irgen_duration);
         }
         Err(e) => {
             println!("Type error: {}", e.message);

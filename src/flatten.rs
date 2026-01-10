@@ -1,5 +1,6 @@
 use crate::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
 use crate::ast::{Type, TypeKind};
+use crate::fast::FlattenedProgram;
 
 pub struct Flattener {
     structs: Vec<AnalyzedStatement>,
@@ -192,15 +193,14 @@ impl Flattener {
         }
     }
 
-    pub fn flatten_program(&mut self, program: &AnalyzedProgram) -> AnalyzedProgram {
-        let flattened: Vec<_> = program.statements.iter()
-            .map(|s| self.flatten_stmt(s, vec![], "root".to_string()))
-            .collect();
+    pub fn flatten_program(&mut self, program: &AnalyzedProgram) -> FlattenedProgram {
+        for stmt in &program.statements {
+            self.flatten_stmt(stmt, vec![], "root".to_string());
+        }
 
-        let mut statements = Vec::new();
-        statements.extend(self.structs.drain(..));
-        statements.extend(self.functions.drain(..));
-
-        AnalyzedProgram { statements }
+        FlattenedProgram {
+            structs: self.structs.drain(..).collect(),
+            functions: self.functions.drain(..).collect(),
+        }
     }
 }

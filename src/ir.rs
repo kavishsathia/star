@@ -26,7 +26,10 @@ pub enum IRExprKind {
     Binary { left: Box<IRExpr>, op: BinaryOp, right: Box<IRExpr> }, // ty
     Unary { op: UnaryOp, expr: Box<IRExpr> }, // ty
 
-    Call { callee: Box<IRExpr>, captures: Box<IRExpr>, args: Vec<IRExpr> }, 
+    Call { callee: Box<IRExpr>, args: Vec<IRExpr> }, 
+    Closure { fn_index: u32, captures: Vec<IRExpr> },
+
+    List(Vec<IRExpr>),
 
     New { struct_index: u32, fields: Vec<IRExpr> },
     Field { object: Box<IRExpr>, offset: u32 },
@@ -54,6 +57,7 @@ pub enum IRStmt {
     Break,
     Continue,
     If { condition: IRExpr, then_block: Vec<IRStmt>, else_block: Option<Vec<IRStmt>> },
+    For { init: Box<IRStmt>, condition: IRExpr, update: Box<IRStmt>, body: Vec<IRStmt> },
     While { condition: IRExpr, body: Vec<IRStmt> },
     Print(IRExpr),
     Produce(IRExpr),
@@ -70,7 +74,7 @@ pub struct IRFunction {
     pub func_index: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IRStruct {
     pub name: String,
     pub fields: Vec<(String, Type)>,
@@ -79,7 +83,7 @@ pub struct IRStruct {
     pub kind: IRStructKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum IRStructKind {
     User,
     Captures,

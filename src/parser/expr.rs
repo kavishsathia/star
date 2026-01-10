@@ -116,10 +116,7 @@ impl<'a> Parser<'a> {
                 self.expect(&Token::LBrace);
                 let mut arms = Vec::new();
                 while !self.check(&Token::RBrace) {
-                    let pattern = if self.check(&Token::NullOrError) {
-                        self.advance();
-                        Pattern::MatchAll
-                    } else if self.check(&Token::Nullable) {
+                    let pattern = if self.check(&Token::Nullable) {
                         self.advance();
                         Pattern::MatchNull
                     } else if self.check(&Token::Errorable) {
