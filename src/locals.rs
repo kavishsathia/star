@@ -122,9 +122,6 @@ impl LocalsIndexer {
                 }
             }
             TypedStatement::Function { name, params, returns, body } => {
-                let fn_index = self.fn_count;
-                self.fn_count += 1;
-
                 self.push_fn(name.clone());
 
                 let mut analyzed_params = vec![];
@@ -150,6 +147,9 @@ impl LocalsIndexer {
                     nullable: false,
                     errorable: false,
                 }, Rc::clone(&captured));
+
+                let fn_index = self.fn_count;
+                self.fn_count += 1;
 
                 AnalyzedStatement::Function {
                     name: name.clone(),

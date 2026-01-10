@@ -7,12 +7,10 @@ pub struct IRProgram {
 }
 
 #[derive(Debug, Clone)]
-pub struct Typed<T> {
-    pub node: T,
+pub struct IRExpr {
+    pub node: IRExprKind,
     pub ty: Type,
 }
-
-pub type IRExpr = Typed<IRExprKind>;
 
 #[derive(Debug, Clone)]
 pub enum IRExprKind {
@@ -28,7 +26,7 @@ pub enum IRExprKind {
     Binary { left: Box<IRExpr>, op: BinaryOp, right: Box<IRExpr> }, // ty
     Unary { op: UnaryOp, expr: Box<IRExpr> }, // ty
 
-    Call { callee: Box<IRExpr>, captures: Box<IRExpr>, args: Vec<IRExpr> },
+    Call { callee: Box<IRExpr>, captures: Box<IRExpr>, args: Vec<IRExpr> }, 
 
     New { struct_index: u32, fields: Vec<IRExpr> },
     Field { object: Box<IRExpr>, offset: u32 },

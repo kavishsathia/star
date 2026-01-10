@@ -6,19 +6,26 @@ mod ir;
 mod tast;
 mod types;
 mod locals;
+mod flatten;
 
 use std::time::Instant;
 use parser::Parser;
 use types::TypeChecker;
 use locals::LocalsIndexer;
+use flatten::Flattener;
 
 fn main() {
     let source = r#"
         fn main(): integer {
-            let b: integer = 2;
+            let b: string = "2";
 
             fn add(a: integer): integer {
-                return a + b;
+                fn nested(c: integer): integer?! {
+                    b;
+                    a;
+                }
+
+                return nested(3)!!??;
             }
         }
     "#;
@@ -50,7 +57,16 @@ fn main() {
             let analyzed_program = indexer.analyze_program(&typed_program);
             let analyze_duration = analyze_start.elapsed();
             println!("AnalyzedAST: {:#?}\n", analyzed_program);
-            println!("Analysis took: {:?}", analyze_duration);
+            println!("Analysis took: {:?}\n", analyze_duration);
+
+            println!("Flattening...\n");
+
+            let flatten_start = Instant::now();
+            let mut flattener = Flattener::new();
+            let flattened_program = flattener.flatten_program(&analyzed_program);
+            let flatten_duration = flatten_start.elapsed();
+            println!("FlattenedAST: {:#?}\n", flattened_program);
+            println!("Flattening took: {:?}", flatten_duration);
         }
         Err(e) => {
             println!("Type error: {}", e.message);
