@@ -21,7 +21,7 @@ impl LocalsIndexer {
         LocalsIndexer {
             scopes: vec![],
             locals_types_stack: vec![],
-            fn_count: 0,
+            fn_count: 1,
             free_var_count: 0,
             fn_names: vec![],
         }
@@ -55,7 +55,7 @@ impl LocalsIndexer {
         if let Some(scopes) = self.scopes.last_mut() {
             if let Some(current_scope) = scopes.last_mut() {
                 let locals = self.locals_types_stack.last_mut().unwrap();
-                let index = locals.len() as u32 + 2; // first two reserved for tmp var and capture pointer
+                let index = locals.len() as u32 + 3; // first three reserved for 2 tmp vars and capture pointer
 
                 if current_scope.contains_key(&name) {
                     panic!("Local variable '{}' already defined in this scope", name);
@@ -122,6 +122,16 @@ impl LocalsIndexer {
                 }
             }
             TypedStatement::Function { name, params, returns, body } => {
+                let captured = Rc::new(RefCell::new(None));
+                let index = self.define(name.clone(), Type {
+                    kind: TypeKind::Function {
+                        params: params.iter().map(|(_, ty)| ty.clone()).collect(),
+                        returns: Box::new(returns.clone()),
+                    },
+                    nullable: false,
+                    errorable: false,
+                }, Rc::clone(&captured));
+
                 self.push_fn(name.clone());
 
                 let mut analyzed_params = vec![];
@@ -137,18 +147,11 @@ impl LocalsIndexer {
                 }
 
                 let locals = self.pop_fn();
-
-                let captured = Rc::new(RefCell::new(None));
-                let index = self.define(name.clone(), Type {
-                    kind: TypeKind::Function {
-                        params: params.iter().map(|(_, ty)| ty.clone()).collect(),
-                        returns: Box::new(returns.clone()),
-                    },
-                    nullable: false,
-                    errorable: false,
-                }, Rc::clone(&captured));
-
-                let fn_index = self.fn_count;
+                
+                let mut fn_index = self.fn_count;
+                if name == "main" {
+                    fn_index = 0;
+                }
                 self.fn_count += 1;
 
                 AnalyzedStatement::Function {
@@ -241,7 +244,7 @@ impl LocalsIndexer {
                         object: Box::new(AnalyzedExpr{
                             expr: aast::Expr::Identifier {
                             name: "captured".to_string(),
-                            index: Some(1),
+                            index: Some(2),
                         }, ty: Type {
                             kind: TypeKind::Struct { name: self.fn_names[self.fn_names.len() - 2].to_string() },
                             nullable: false,

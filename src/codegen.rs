@@ -1,17 +1,18 @@
-use std::{fmt::Binary, mem::discriminant};
-
 use wasm_encoder::{
-    CodeSection, ConstExpr, ElementSection, Elements, EntityType, ExportSection, Function, FunctionSection, ImportSection, Instruction, MemArg, Module, RefType, TableSection, TableType, TypeSection, ValType
+    CodeSection, ConstExpr, ElementSection, Elements, EntityType, ExportSection, Function,
+    FunctionSection, ImportSection, Instruction, MemArg, Module, RefType, TableSection,
+    TableType, TypeSection, ValType
 };
-use crate::ast::{BinaryOp, Expr, Program, Statement, Type, TypeKind, UnaryOp};
+use crate::ast::{BinaryOp, Type, TypeKind, UnaryOp};
+use crate::ir::{IRProgram, IRFunction, IRStruct, IRStmt, IRExpr, IRExprKind};
 
 pub struct Codegen {}
 
 impl Codegen {
     fn type_to_valtype(ty: &Type) -> ValType {
         match &ty.kind {
-            TypeKind::Function { .. } => ValType::I32,
-            TypeKind::Primitive(name) if name == "Point" => ValType::I32,
+            TypeKind::Function { .. } => ValType::I64,
+            TypeKind::Struct { .. } => ValType::I32,
             _ => ValType::I64,
         }
     }
@@ -24,24 +25,18 @@ impl Codegen {
 
     const IMPORT_COUNT: u32 = 4;
 
-    pub fn compile(&mut self, program: &Program) -> Vec<u8> {
-        let stmts = &program.statements;
-        let fn_sigs = &program.function_signatures;
+    pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
         let mut module = Module::new();
 
         let mut types = TypeSection::new();
-        // Type 0: (i64) -> () for print_i64
         types.ty().function(vec![ValType::I64], vec![]);
-        // Type 1: () -> () for init
         types.ty().function(vec![], vec![]);
-        // Type 2: (i32) -> () for register
         types.ty().function(vec![ValType::I32], vec![]);
-        // Type 3: (i32) -> i32 for falloc
         types.ty().function(vec![ValType::I32], vec![ValType::I32]);
-        // Type 4+: Star function types
-        for (_name, param_types, return_type) in fn_sigs {
-            let params: Vec<ValType> = param_types.iter().map(Self::type_to_valtype).collect();
-            let results: Vec<ValType> = vec![Self::type_to_valtype(return_type)];
+        for func in &program.functions {
+            let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
+            params.extend(func.params.iter().map(Self::type_to_valtype));
+            let results: Vec<ValType> = vec![Self::type_to_valtype(&func.returns)];
             types.ty().function(params, results);
         }
         module.section(&types);
@@ -61,17 +56,17 @@ impl Codegen {
         module.section(&imports);
 
         let mut functions = FunctionSection::new();
-        for (i, _) in fn_sigs.iter().enumerate() {
+        for (i, _) in program.functions.iter().enumerate() {
             functions.function((i as u32 + Self::IMPORT_COUNT) as u32);
         }
         module.section(&functions);
 
-        if !fn_sigs.is_empty() {
+        if !program.functions.is_empty() {
             let mut tables = TableSection::new();
             tables.table(TableType {
                 element_type: RefType::FUNCREF,
-                minimum: fn_sigs.len() as u64,
-                maximum: Some(fn_sigs.len() as u64),
+                minimum: program.functions.len() as u64,
+                maximum: Some(program.functions.len() as u64),
                 table64: false,
                 shared: false,
             });
@@ -82,8 +77,8 @@ impl Codegen {
         exports.export("main", wasm_encoder::ExportKind::Func, Self::IMPORT_COUNT);
         module.section(&exports);
 
-        if !fn_sigs.is_empty() {
-            let func_indices: Vec<u32> = (Self::IMPORT_COUNT..(Self::IMPORT_COUNT + fn_sigs.len() as u32)).collect();
+        if !program.functions.is_empty() {
+            let func_indices: Vec<u32> = (Self::IMPORT_COUNT..(Self::IMPORT_COUNT + program.functions.len() as u32)).collect();
             let mut elements = ElementSection::new();
             elements.active(
                 Some(0),
@@ -95,10 +90,8 @@ impl Codegen {
 
         let mut codes = CodeSection::new();
 
-        for stmt in stmts {
-            if let Statement::Function { .. } = stmt {
-                self.compile_function(stmt, &mut codes, program);
-            }
+        for func in &program.functions {
+            self.compile_function(func, &mut codes, program);
         }
 
         module.section(&codes);
@@ -106,64 +99,64 @@ impl Codegen {
         module.finish()
     }
 
-    fn compile_function(&mut self, stmt: &Statement, codes: &mut CodeSection, program: &Program) {
-        if let Statement::Function { name   , body, local_types, function_index, local_index, .. } = stmt {
-            let local_types_vec = local_types.borrow();
-            let locals: Vec<(u32, ValType)> = local_types_vec
-                .iter()
-                .map(|t| (1, Self::type_to_valtype(t)))
-                .collect();
-            let mut f = Function::new(locals);
+    fn compile_function(&mut self, func: &IRFunction, codes: &mut CodeSection, program: &IRProgram) {
+        let mut locals: Vec<(u32, ValType)> = vec![];
+        locals.extend(func.locals.iter().map(|t| (1, Self::type_to_valtype(t))));
+        println!("Locals: {:?}", locals.clone());
+        let mut f = Function::new(locals);
+        
 
-            if name == "main" {
-                f.instruction(&Instruction::Call(1));
-                for struct_type in &program.struct_types {
-                    let (_name, size) = struct_type;
-                    f.instruction(&Instruction::I32Const(*size as i32));
-                    f.instruction(&Instruction::Call(2)); 
-                }
+        if func.name == "main" {
+            f.instruction(&Instruction::Call(1));
+            for ir_struct in &program.structs {
+                f.instruction(&Instruction::I32Const(ir_struct.size as i32));
+                f.instruction(&Instruction::Call(2));
             }
-
-            for body_stmt in body {
-                self.compile_stmt(body_stmt, &mut f);
-            }
-
-            f.instruction(&Instruction::End);
-            codes.function(&f);
-
-            for body_stmt in body {
-                if let Statement::Function { .. } = body_stmt {
-                    self.compile_function(body_stmt, codes, program);
-                }
-            }
-        } else {
-            panic!("compile_function called with non-function statement");
         }
+
+        for stmt in &func.body {
+            self.compile_stmt(stmt, &mut f);
+        }
+
+        f.instruction(&Instruction::End);
+        codes.function(&f);
     }
 
-    fn compile_expr(&mut self, expr: &Expr, f: &mut Function) {
-        match expr {
-            Expr::Integer(n) => {
+    fn compile_expr(&mut self, expr: &IRExpr, f: &mut Function, preallocated: bool) {
+        match &expr.node {
+            IRExprKind::Integer(n) => {
                 f.instruction(&Instruction::I64Const(*n));
             }
-            Expr::Float(n) => {
+            IRExprKind::Float(n) => {
                 f.instruction(&Instruction::F64Const(wasm_encoder::Ieee64::from(*n)));
             }
-            Expr::Boolean(b) => {
+            IRExprKind::Boolean(b) => {
                 f.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
             }
-            Expr::Binary { left, op: BinaryOp::Is, right } =>  {
-                self.compile_expr(right, f);
-                if let Expr::Identifier { local_index, .. } = &**left {
-                    let index = local_index.get().expect("Local index not set for identifier");
-                    f.instruction(&Instruction::LocalTee(index));
+            IRExprKind::String(_s) => {
+                todo!()
+            }
+            IRExprKind::Null => {
+                f.instruction(&Instruction::I64Const(0));
+            }
+            IRExprKind::Local(index) => {
+                f.instruction(&Instruction::LocalGet(*index));
+            }
+            IRExprKind::Binary { left, op: BinaryOp::Is, right } => {
+                if let IRExprKind::Local(index) = &left.node {
+                    self.compile_expr(right, f, false);
+                    f.instruction(&Instruction::LocalTee(*index));
                 } else {
-                    panic!("Left side of 'is' must be an identifier");
+                    self.compile_expr(left, f, false);
+                    f.instruction(&Instruction::LocalTee(0));
+                    self.compile_expr(right, f, false);
+                    f.instruction(&Instruction::I64Store(MemArg { offset: 0, align: 3, memory_index: 0 }));
+                    f.instruction(&Instruction::LocalGet(0));
                 }
             }
-            Expr::Binary { left, op, right }  => {
-                self.compile_expr(left, f);
-                self.compile_expr(right, f);
+            IRExprKind::Binary { left, op, right } => {
+                self.compile_expr(left, f, false);
+                self.compile_expr(right, f, false);
                 match op {
                     BinaryOp::Plus => {
                         f.instruction(&Instruction::I64Add);
@@ -219,155 +212,175 @@ impl Codegen {
                     _ => panic!("Unsupported binary operation"),
                 }
             }
-            Expr::Identifier { name, local_index } => {
-                let index = local_index.get().expect("Local index not set for identifier");
-                f.instruction(&Instruction::LocalGet(index));
-            }
-            Expr::Unary { op, expr } => {
+            IRExprKind::Unary { op, expr } => {
                 match op {
                     UnaryOp::Minus => {
                         f.instruction(&Instruction::I64Const(0));
-                        self.compile_expr(expr, f);
+                        self.compile_expr(expr, f, false);
                         f.instruction(&Instruction::I64Sub);
                     }
                     UnaryOp::Not => {
-                        self.compile_expr(expr, f);
+                        self.compile_expr(expr, f, false);
                         f.instruction(&Instruction::I32Eqz);
                     }
                     UnaryOp::Raise => {
-                        // Placeholder for error raising
                     }
                 }
             }
-            Expr::Call { callee, args } => {
+            IRExprKind::Call { callee, args } => {
+                f.instruction(&Instruction::I32Const(0));
+                f.instruction(&Instruction::I64Const(0));
+                self.compile_expr(callee, f, false);
+                f.instruction(&Instruction::LocalTee(1));
+                f.instruction(&Instruction::LocalGet(1));
+                f.instruction(&Instruction::I64Const(32));
+                f.instruction(&Instruction::I64ShrU);
+                f.instruction(&Instruction::I32WrapI64);
+                f.instruction(&Instruction::LocalSet(0));
+                f.instruction(&Instruction::I32WrapI64);
                 for arg in args {
-                    self.compile_expr(arg, f);
+                    self.compile_expr(arg, f, false);
                 }
-                self.compile_expr(callee, f);
+                f.instruction(&Instruction::LocalGet(0));
+                
                 f.instruction(&Instruction::CallIndirect {
-                    type_index: 5, // Placeholder type index
+                    type_index: 5,
                     table_index: 0,
                 });
             }
-            Expr::Init { name: _, fields, type_index } => {
-                type_index.get().map(|idx| {
-                    f.instruction(&Instruction::I32Const(idx as i32));
+            IRExprKind::New { struct_index, fields } => {
+                if !preallocated {
+                    f.instruction(&Instruction::I32Const(*struct_index as i32));
                     f.instruction(&Instruction::Call(3));
-
-                    f.instruction(&Instruction::LocalTee(0));
-
-                    let mut offset = 0;
-                    for (field_name, field_expr) in fields {
-                        self.compile_expr(field_expr, f);
-                        f.instruction(&Instruction::I64Store(MemArg { offset, align: 3, memory_index: 0 }));
-                        f.instruction(&Instruction::LocalGet(0));
-                        offset += 8;
+                }
+                f.instruction(&Instruction::LocalTee(0));
+                let mut offset = 0u64;
+                for field_expr in fields {
+                    self.compile_expr(field_expr, f, false);
+                    match field_expr.ty.kind {
+                        TypeKind::Struct { .. } => {
+                            f.instruction(&Instruction::I32Store(MemArg { offset, align: 2, memory_index: 0 }));
+                        }
+                        _ => {
+                            f.instruction(&Instruction::I64Store(MemArg { offset, align: 3, memory_index: 0 }));
+                        }
                     }
-            });
+                    f.instruction(&Instruction::LocalGet(0));
+                    offset += 8;
+                }
             }
-            Expr::MemberAccess { object, field } => {
-                self.compile_expr(object, f);
-                f.instruction(&Instruction::I64Load(MemArg { offset: 0, align: 3, memory_index: 0 }));
+            IRExprKind::Field { object, offset } => {
+                self.compile_expr(object, f, false);
+                if matches!(expr.ty.kind, TypeKind::Struct { .. }) {
+                    f.instruction(&Instruction::I32Load(MemArg { offset: *offset as u64, align: 2, memory_index: 0 }));
+                } else {
+                    f.instruction(&Instruction::I64Load(MemArg { offset: *offset as u64, align: 3, memory_index: 0 }));
+                }
             }
-            _ => {
-                panic!("Unsupported expression type in codegen");
+            IRExprKind::FieldReference { object, offset } => {
+                self.compile_expr(object, f, false);
+                f.instruction(&Instruction::I32Const(*offset as i32));
+                f.instruction(&Instruction::I32Add);
             }
+            IRExprKind::List(_) => todo!(),
+            IRExprKind::Index { .. } => todo!(),
+            IRExprKind::Match { .. } => todo!(),
+            IRExprKind::UnwrapError(_) => todo!(),
+            IRExprKind::UnwrapNull(_) => todo!(),
         }
     }
 
-    fn compile_stmt(&mut self, stmt: &Statement, f: &mut Function) {
+    fn compile_stmt(&mut self, stmt: &IRStmt, f: &mut Function) {
         match stmt {
-            Statement::Expr(expr) => {
-                self.compile_expr(expr, f);
+            IRStmt::Expr(expr) => {
+                self.compile_expr(expr, f, false);
                 f.instruction(&Instruction::Drop);
             }
-            Statement::If { condition, consequent, alternate } => {
-                self.compile_expr(condition, f);
-                f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
-                for stmt in consequent {    
-                    self.compile_stmt(stmt, f);
-                }
-                if let Some(alternate) = alternate {
-                    f.instruction(&Instruction::Else);
-                    for stmt in alternate {
-                        self.compile_stmt(stmt, f);
-                    }
-                }
-                f.instruction(&Instruction::End);
+            IRStmt::LocalSet { index, value } => {
+                self.compile_expr(value, f, false);
+                println!("Setting local {} ", index);
+                f.instruction(&Instruction::LocalSet(*index));
             }
-            Statement::While { condition, body } => {
-                f.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty));
-                f.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
-                self.compile_expr(condition, f);
-                f.instruction(&Instruction::I32Eqz);
-                f.instruction(&Instruction::BrIf(1));
-                for stmt in body {
-                    self.compile_stmt(stmt, f);
-                }
-                f.instruction(&Instruction::Br(0));
-                f.instruction(&Instruction::End);
-                f.instruction(&Instruction::End);
-            }
-            Statement::Let { name, value, type_annotation, local_index } => {
-                if let Some(expr) = value {
-                    self.compile_expr(expr, f);
-                } else {
-                    f.instruction(&Instruction::I64Const(0));
-                }
-                let index = local_index.get().expect("Local index not set for variable");
-                f.instruction(&Instruction::LocalSet(index));
-            }
-            Statement::Const { name, value, type_annotation, local_index } => {
-                self.compile_expr(value, f);
-                let index = local_index.get().expect("Local index not set for constant");
-                f.instruction(&Instruction::LocalSet(index));
-            }
-            Statement::Return(expr) => {
+            IRStmt::Return(expr) => {
                 if let Some(expr) = expr {
-                    self.compile_expr(expr, f);
+                    self.compile_expr(expr, f, false);
                 } else {
                     f.instruction(&Instruction::I64Const(0));
                 }
                 f.instruction(&Instruction::Return);
             }
-            Statement::Break => {
+            IRStmt::Break => {
                 f.instruction(&Instruction::Br(1));
             }
-            Statement::Continue => {
+            IRStmt::Continue => {
                 f.instruction(&Instruction::Br(0));
             }
-            Statement::For { initializer, condition, increment, body } => {
+            IRStmt::If { condition, then_block, else_block } => {
+                self.compile_expr(condition, f, false);
+                f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
+                for stmt in then_block {
+                    self.compile_stmt(stmt, f);
+                }
+                if let Some(else_stmts) = else_block {
+                    f.instruction(&Instruction::Else);
+                    for stmt in else_stmts {
+                        self.compile_stmt(stmt, f);
+                    }
+                }
+                f.instruction(&Instruction::End);
+            }
+            IRStmt::While { condition, body } => {
                 f.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty));
-                self.compile_stmt(initializer, f);
                 f.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
-                self.compile_expr(condition, f);
+                self.compile_expr(condition, f, false);
                 f.instruction(&Instruction::I32Eqz);
                 f.instruction(&Instruction::BrIf(1));
                 for stmt in body {
                     self.compile_stmt(stmt, f);
                 }
-                self.compile_stmt(increment, f);
                 f.instruction(&Instruction::Br(0));
                 f.instruction(&Instruction::End);
                 f.instruction(&Instruction::End);
             }
-            Statement::Function { name, params, return_type, body, local_types, function_index, local_index } => {
-                f.instruction(&Instruction::I32Const(function_index.get().expect("Function index not set") as i32));
-                f.instruction(&Instruction::LocalSet(local_index.get().expect("Local index not set for function")));
+            IRStmt::For { init, condition, update, body } => {
+                f.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty));
+                self.compile_stmt(init, f);
+                f.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
+                self.compile_expr(condition, f, false);
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::BrIf(1));
+                for stmt in body {
+                    self.compile_stmt(stmt, f);
+                }
+                self.compile_stmt(update, f);
+                f.instruction(&Instruction::Br(0));
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::End);
             }
-            Statement::Struct { name, fields } => {
-                ()
+            IRStmt::Print(expr) => {
+                self.compile_expr(expr, f, false);
+                f.instruction(&Instruction::Call(0));
             }
-            Statement::Error { name } => {
-                todo!()
-            }
-            Statement::Match { expr, arms } => {
-                todo!()
-            }
-            Statement::Print(expr) => {
-                self.compile_expr(expr, f);
-                f.instruction(&Instruction::Call(0)); // call print_i64 (function index 0)
-            }
+            IRStmt::Produce(_) => todo!(),
+            IRStmt::LocalClosure { fn_index, captures, index } => {
+                match &captures.node {
+                    IRExprKind::New { struct_index, fields: _ } => {
+                        f.instruction(&Instruction::I32Const(*struct_index as i32));
+                        f.instruction(&Instruction::Call(3));
+                        f.instruction(&Instruction::LocalTee(0));
+                    }
+                    _ => panic!("Captures must be a local struct allocation"),
+                }
+                f.instruction(&Instruction::I64ExtendI32U);
+                f.instruction(&Instruction::I32Const(*fn_index as i32));
+                f.instruction(&Instruction::I64ExtendI32U);
+                f.instruction(&Instruction::I64Const(32));
+                f.instruction(&Instruction::I64Shl);
+                f.instruction(&Instruction::I64Or);
+                f.instruction(&Instruction::LocalSet(*index));
+                f.instruction(&Instruction::LocalGet(0));
+                self.compile_expr(captures, f, true);
+            },
         }
     }
 }

@@ -21,18 +21,17 @@ pub enum IRExprKind {
     Null, // ty
 
     Local(u32), // ty
-    CaptureField { offset: u32 }, // ty
 
     Binary { left: Box<IRExpr>, op: BinaryOp, right: Box<IRExpr> }, // ty
     Unary { op: UnaryOp, expr: Box<IRExpr> }, // ty
 
     Call { callee: Box<IRExpr>, args: Vec<IRExpr> }, 
-    Closure { fn_index: u32, captures: Vec<IRExpr> },
 
     List(Vec<IRExpr>),
 
     New { struct_index: u32, fields: Vec<IRExpr> },
     Field { object: Box<IRExpr>, offset: u32 },
+    FieldReference { object: Box<IRExpr>, offset: u32 },
     Index { list: Box<IRExpr>, index: Box<IRExpr> },
 
     Match { expr: Box<IRExpr>, binding: u32, arms: Vec<(IRPattern, Vec<IRStmt>)> },
@@ -61,6 +60,7 @@ pub enum IRStmt {
     While { condition: IRExpr, body: Vec<IRStmt> },
     Print(IRExpr),
     Produce(IRExpr),
+    LocalClosure { fn_index: u32, captures: Box<IRExpr>, index: u32 },
 }
 
 #[derive(Debug)]

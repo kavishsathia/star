@@ -1,5 +1,5 @@
 use crate::aast::{AnalyzedExpr, AnalyzedStatement, Expr};
-use crate::ast::{Pattern, Type};
+use crate::ast::{BinaryOp, Pattern, Type};
 use crate::fast::FlattenedProgram;
 use crate::ir::{IRExpr, IRFunction, IRPattern, IRProgram, IRStmt, IRStruct};
 
@@ -145,6 +145,15 @@ impl IRGenerator {
             AnalyzedStatement::Function { .. } => panic!("unexpected nested function after flattening"),
             AnalyzedStatement::Struct { .. } => panic!("unexpected struct in function body"),
             AnalyzedStatement::Error { .. } => panic!("unexpected error in function body"),
+            AnalyzedStatement::LocalClosure { fn_index, captures, index } => {
+                let ir_captures = self.lower_expr(captures);
+                IRStmt::LocalClosure {
+                    captures: Box::new(ir_captures),
+                    index: *index,
+                    fn_index: *fn_index,
+
+                }
+            },
         }
     }
 
@@ -226,6 +235,47 @@ impl IRGenerator {
                     ty: expr.ty.clone(),
                 }
             },
+            Expr::Binary { left, op: BinaryOp::Is, right } => {
+                match &left.expr {
+                    Expr::Identifier { name: _, index } => {
+                        let ir_left = self.lower_expr(left);
+                        let ir_right = self.lower_expr(right);
+                        IRExpr {
+                            node: crate::ir::IRExprKind::Binary {
+                                left: Box::new(ir_left),
+                                op: BinaryOp::Is,
+                                right: Box::new(ir_right),
+                            },
+                            ty: expr.ty.clone(),
+                        }
+                    },
+                    Expr::Field { object, field } => {
+                        let ir_object = self.lower_expr(&object);
+                        let struct_name = match &object.ty.kind {
+                            crate::ast::TypeKind::Struct { name } => name,
+                            _ => panic!("expected struct type for field access"),
+                        };
+                        let offset = self.get_field_offset(struct_name, &field);
+                        let ir_left = IRExpr {
+                            node: crate::ir::IRExprKind::FieldReference {
+                                object: Box::new(ir_object),
+                                offset,
+                            },
+                            ty: left.ty.clone(),
+                        };
+                        let ir_right = self.lower_expr(right);
+                        IRExpr {
+                            node: crate::ir::IRExprKind::Binary {
+                                left: Box::new(ir_left),
+                                op: BinaryOp::Is,
+                                right: Box::new(ir_right),
+                            },
+                            ty: expr.ty.clone(),
+                        }
+                    },
+                    _ => panic!("Left side of 'is' must be a local or field"),
+                }
+            },
             Expr::Binary { left, op, right } => {
                 let ir_left = self.lower_expr(left);
                 let ir_right = self.lower_expr(right);
@@ -260,16 +310,6 @@ impl IRGenerator {
                 }
             },
             Expr::Match { .. } => todo!(),
-            Expr::Closure { fn_index, captures } => {
-                let ir_captures = self.lower_expr(captures);
-                IRExpr {
-                    node: crate::ir::IRExprKind::Closure {
-                        fn_index: *fn_index,
-                        captures: vec![ir_captures],
-                    },
-                    ty: expr.ty.clone(),
-                }
-            },
             Expr::UnwrapError(inner) => {
                 let ir_inner = self.lower_expr(inner);
                 IRExpr {
@@ -297,6 +337,7 @@ impl IRGenerator {
     }
 
     fn lookup_struct(&self, name: &str) -> u32 {
+        println!("Looking up struct: {:?}", self.structs);
         self.structs.iter().position(|s| s.name == name).expect("struct not found") as u32
     }
 

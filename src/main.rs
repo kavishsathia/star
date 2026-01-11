@@ -9,6 +9,7 @@ mod locals;
 mod fast;
 mod flatten;
 mod irgen;
+mod codegen;
 
 use std::time::Instant;
 use parser::Parser;
@@ -16,20 +17,23 @@ use types::TypeChecker;
 use locals::LocalsIndexer;
 use flatten::Flattener;
 use irgen::IRGenerator;
+use codegen::Codegen;
 
 fn main() {
     let source = r#"
+        struct Node {
+            value: integer,
+            next: Node?,
+        }
+
         fn main(): integer {
-            let b: string = "2";
+            let node: Node = new Node {
+                value: 10,
+                next: null,
+            };
 
-            fn add(a: integer): integer {
-                fn nested(c: integer): integer?! {
-                    b;
-                    a;
-                }
-
-                return nested(3)!!??;
-            }
+            node.value = 20;
+            return node.value;
         }
     "#;
 
@@ -78,7 +82,19 @@ fn main() {
             let ir_program = ir_generator.generate(&flattened_program);
             let irgen_duration = irgen_start.elapsed();
             println!("IR: {:#?}\n", ir_program);
-            println!("IR generation took: {:?}", irgen_duration);
+            println!("IR generation took: {:?}\n", irgen_duration);
+
+            println!("Compiling to WASM...\n");
+
+            let codegen_start = Instant::now();
+            let mut codegen = Codegen::new();
+            let wasm_bytes = codegen.compile(&ir_program);
+            let codegen_duration = codegen_start.elapsed();
+            println!("WASM bytes: {} bytes", wasm_bytes.len());
+            println!("Codegen took: {:?}\n", codegen_duration);
+
+            std::fs::write("output.wasm", &wasm_bytes).expect("Failed to write output.wasm");
+            println!("Written to output.wasm");
         }
         Err(e) => {
             println!("Type error: {}", e.message);

@@ -29,7 +29,6 @@ pub enum Expr {
     Unary { op: UnaryOp, expr: Box<AnalyzedExpr> },
     Call { callee: Box<AnalyzedExpr>, args: Vec<AnalyzedExpr> },
     Match { expr: Box<AnalyzedExpr>, binding: String, arms: Vec<(Pattern, Vec<AnalyzedStatement>)> },
-    Closure { fn_index: u32, captures: Box<AnalyzedExpr> },
     UnwrapError(Box<AnalyzedExpr>),
     UnwrapNull(Box<AnalyzedExpr>),
 }
@@ -50,4 +49,5 @@ pub enum AnalyzedStatement {
     Error { name: String },
     Print(AnalyzedExpr),
     Produce(AnalyzedExpr),
+    LocalClosure { fn_index: u32, captures: Box<AnalyzedExpr>, index: u32 },
 }

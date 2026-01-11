@@ -49,6 +49,18 @@ impl Flattener {
                         self.captures.push((field_name.clone(), ty.clone(), CaptureKind::Index(index.unwrap())));
                     }
                 }
+                AnalyzedStatement::Function { name: _, params, returns, body: _, captured, index, fn_index: _ , .. } => {
+                    if let Some(field_name) = captured.borrow().as_ref() {
+                        self.captures.push((field_name.clone(), Type {
+                            kind: TypeKind::Function {
+                                params: params.iter().map(|(_, t, _, _)| t.clone()).collect(),
+                                returns: Box::new(returns.clone()),
+                            },
+                            nullable: false,
+                            errorable: false,
+                        }, CaptureKind::Index(index.unwrap())));
+                    }
+                }
                 _ => {}
             }
         }
@@ -145,18 +157,11 @@ impl Flattener {
                     errorable: false,
                 };
 
-                AnalyzedStatement::Let {
-                    name: name.to_string(),
-                    ty: fn_type.clone(),
-                    value: Some(AnalyzedExpr {
-                        expr: aast::Expr::Closure {
-                            fn_index: fn_index.unwrap(),
-                            captures: Box::new(struct_init),
-                        },
-                        ty: fn_type,
-                    }),
-                    captured: captured.clone(),
-                    index: *index,
+                AnalyzedStatement::LocalClosure {
+                    fn_index: fn_index.unwrap(),
+                    captures: Box::new(struct_init),
+                    index: index.unwrap(),
+                    
                 }
             }
             AnalyzedStatement::If { condition, then_block, else_block } => {
@@ -189,6 +194,15 @@ impl Flattener {
                     body: analyzed_body,
                 }
             }
+            AnalyzedStatement::Struct { name, fields } => {
+                let str = AnalyzedStatement::Struct {
+                    name: name.clone(),
+                    fields: fields.clone(),
+                };
+
+                self.structs.push(str.clone());
+                str
+            }
             nonfunc => nonfunc.clone()
         }
     }
@@ -198,9 +212,19 @@ impl Flattener {
             self.flatten_stmt(stmt, vec![], "root".to_string());
         }
 
+        let structs = self.structs.drain(..).collect::<Vec<_>>();
+        let mut functions = self.functions.drain(..).collect::<Vec<_>>();
+        
+        if let Some(pos) = functions.iter().position(|f| {
+            matches!(f, AnalyzedStatement::Function { name, .. } if name == "main")
+        }) {
+            let main_fn = functions.remove(pos);
+            functions.insert(0, main_fn);
+        }
+        
         FlattenedProgram {
-            structs: self.structs.drain(..).collect(),
-            functions: self.functions.drain(..).collect(),
+            structs,
+            functions,
         }
     }
 }
