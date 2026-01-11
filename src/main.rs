@@ -1,42 +1,31 @@
-mod lexer;
-mod ast;
 mod aast;
-mod parser;
-mod ir;
-mod tast;
-mod types;
-mod locals;
+mod ast;
+mod codegen;
 mod fast;
 mod flatten;
+mod ir;
 mod irgen;
-mod codegen;
+mod lexer;
+mod locals;
+mod parser;
+mod tast;
+mod types;
+mod wrap;
 
-use std::time::Instant;
-use parser::Parser;
-use types::TypeChecker;
-use locals::LocalsIndexer;
+use codegen::Codegen;
 use flatten::Flattener;
 use irgen::IRGenerator;
-use codegen::Codegen;
+use locals::LocalsIndexer;
+use parser::Parser;
+use std::time::Instant;
+use types::TypeChecker;
+use wrap::Wrapper;
 
 fn main() {
     let source = r#"
         fn main(): integer {
-            let arr: {integer} = {5,4,3,2,1};
+            let i: integer? = null;
 
-            for let i: integer = 0; i < 5; i = i + 1; {
-                for let j: integer = 0; j < 4 - i; j = j + 1; {
-                    if arr[j] > arr[j + 1] {
-                        let temp: integer = arr[j];
-                        arr[j] = arr[j + 1];
-                        arr[j + 1] = temp;
-                    }
-                }
-            }
-            
-            for let k: integer = 0; k < 5; k = k + 1; {
-                print arr[k] << 3;
-            }
 
             return 0;
         }
@@ -80,11 +69,20 @@ fn main() {
             println!("FlattenedAST: {:#?}\n", flattened_program);
             println!("Flattening took: {:?}\n", flatten_duration);
 
+            println!("Wrapping...\n");
+
+            let wrap_start = Instant::now();
+            let mut wrapper = Wrapper::new();
+            let wrapped_program = wrapper.wrap_program(flattened_program);
+            let wrap_duration = wrap_start.elapsed();
+            println!("WrappedAST: {:#?}\n", wrapped_program);
+            println!("Wrapping took: {:?}\n", wrap_duration);
+
             println!("Generating IR...\n");
 
             let irgen_start = Instant::now();
             let mut ir_generator = IRGenerator::new();
-            let ir_program = ir_generator.generate(&flattened_program);
+            let ir_program = ir_generator.generate(&wrapped_program);
             let irgen_duration = irgen_start.elapsed();
             println!("IR: {:#?}\n", ir_program);
             println!("IR generation took: {:?}\n", irgen_duration);

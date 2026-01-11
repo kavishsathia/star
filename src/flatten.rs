@@ -26,32 +26,32 @@ impl Flattener {
 
 impl Flattener {
     pub fn gather_captures(&mut self, body: &Vec<AnalyzedStatement>) -> Vec<(String, Type, CaptureKind)> {
-        self.captures.clear();
-        for statement in body { 
+        let mut captures = vec![];
+        for statement in body {
             match statement {
                 AnalyzedStatement::If { condition, then_block, else_block } => {
-                    self.gather_captures(then_block);
+                    captures.extend(self.gather_captures(then_block));
                     if let Some(else_blk) = else_block {
-                        self.gather_captures(else_blk);
+                        captures.extend(self.gather_captures(else_blk));
                     }
                 }
                 AnalyzedStatement::While { condition, body } => {
-                    self.gather_captures(body);
+                    captures.extend(self.gather_captures(body));
                 }
                 AnalyzedStatement::For { init, condition, update, body } => {
-                    self.gather_captures(&vec![*init.clone()]);
-                    self.gather_captures(&vec![*update.clone()]);
-                    self.gather_captures(body);
+                    captures.extend(self.gather_captures(&vec![*init.clone()]));
+                    captures.extend(self.gather_captures(&vec![*update.clone()]));
+                    captures.extend(self.gather_captures(body));
                 }
                 AnalyzedStatement::Let { ty, captured, index, .. } |
                 AnalyzedStatement::Const { ty, captured, index, .. } => {
                     if let Some(field_name) = captured.borrow().as_ref() {
-                        self.captures.push((field_name.clone(), ty.clone(), CaptureKind::Index(index.unwrap())));
+                        captures.push((field_name.clone(), ty.clone(), CaptureKind::Index(index.unwrap())));
                     }
                 }
                 AnalyzedStatement::Function { name: _, params, returns, body: _, captured, index, fn_index: _ , .. } => {
                     if let Some(field_name) = captured.borrow().as_ref() {
-                        self.captures.push((field_name.clone(), Type {
+                        captures.push((field_name.clone(), Type {
                             kind: TypeKind::Function {
                                 params: params.iter().map(|(_, t, _, _)| t.clone()).collect(),
                                 returns: Box::new(returns.clone()),
@@ -64,7 +64,7 @@ impl Flattener {
                 _ => {}
             }
         }
-        self.captures.iter().cloned().collect()
+        captures
     }
 
     pub fn scan_params(&mut self, params: &Vec<(String, Type, u32, std::rc::Rc<std::cell::RefCell<Option<String>>>)>) -> Vec<(String, Type, CaptureKind)> {

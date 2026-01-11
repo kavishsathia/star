@@ -1,15 +1,18 @@
+use crate::ast::{BinaryOp, Type, TypeKind, UnaryOp};
+use crate::ir::{IRExpr, IRExprKind, IRFunction, IRProgram, IRStmt, IRStruct};
 use wasm_encoder::{
     CodeSection, ConstExpr, ElementSection, Elements, EntityType, ExportSection, Function,
-    FunctionSection, ImportSection, Instruction, MemArg, Module, RefType, TableSection,
-    TableType, TypeSection, ValType
+    FunctionSection, ImportSection, Instruction, MemArg, Module, RefType, TableSection, TableType,
+    TypeSection, ValType,
 };
-use crate::ast::{BinaryOp, Type, TypeKind, UnaryOp};
-use crate::ir::{IRProgram, IRFunction, IRStruct, IRStmt, IRExpr, IRExprKind};
 
 pub struct Codegen {}
 
 impl Codegen {
     fn type_to_valtype(ty: &Type) -> ValType {
+        if ty.nullable || ty.errorable {
+            return ValType::I32;
+        }
         match &ty.kind {
             TypeKind::Function { .. } => ValType::I64,
             TypeKind::List { .. } => ValType::I32,
@@ -30,12 +33,14 @@ impl Codegen {
         let mut module = Module::new();
 
         let mut types = TypeSection::new();
-        types.ty().function(vec![ValType::I64], vec![]);           // 0: print_i64
-        types.ty().function(vec![], vec![]);                        // 1: init
-        types.ty().function(vec![ValType::I32], vec![]);            // 2: register
+        types.ty().function(vec![ValType::I64], vec![]); // 0: print_i64
+        types.ty().function(vec![], vec![]); // 1: init
+        types.ty().function(vec![ValType::I32], vec![]); // 2: register
         types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 3: falloc
-        types.ty().function(vec![], vec![]);                        // 4: dinit
-        types.ty().function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 5: dalloc
+        types.ty().function(vec![], vec![]); // 4: dinit
+        types
+            .ty()
+            .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 5: dalloc
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
@@ -51,20 +56,28 @@ impl Codegen {
         imports.import("alloc", "falloc", EntityType::Function(3));
         imports.import("dalloc", "dinit", EntityType::Function(4));
         imports.import("dalloc", "dalloc", EntityType::Function(5));
-        imports.import("alloc", "memory", EntityType::Memory(wasm_encoder::MemoryType {
-            minimum: 1,
-            maximum: None,
-            memory64: false,
-            shared: false,
-            page_size_log2: None,
-        }));
-        imports.import("dalloc", "memory", EntityType::Memory(wasm_encoder::MemoryType {
-            minimum: 16,
-            maximum: None,
-            memory64: false,
-            shared: false,
-            page_size_log2: None,
-        }));
+        imports.import(
+            "alloc",
+            "memory",
+            EntityType::Memory(wasm_encoder::MemoryType {
+                minimum: 1,
+                maximum: None,
+                memory64: false,
+                shared: false,
+                page_size_log2: None,
+            }),
+        );
+        imports.import(
+            "dalloc",
+            "memory",
+            EntityType::Memory(wasm_encoder::MemoryType {
+                minimum: 16,
+                maximum: None,
+                memory64: false,
+                shared: false,
+                page_size_log2: None,
+            }),
+        );
         module.section(&imports);
 
         let mut functions = FunctionSection::new();
@@ -90,7 +103,9 @@ impl Codegen {
         module.section(&exports);
 
         if !program.functions.is_empty() {
-            let func_indices: Vec<u32> = (Self::IMPORT_COUNT..(Self::IMPORT_COUNT + program.functions.len() as u32)).collect();
+            let func_indices: Vec<u32> = (Self::IMPORT_COUNT
+                ..(Self::IMPORT_COUNT + program.functions.len() as u32))
+                .collect();
             let mut elements = ElementSection::new();
             elements.active(
                 Some(0),
@@ -111,16 +126,20 @@ impl Codegen {
         module.finish()
     }
 
-    fn compile_function(&mut self, func: &IRFunction, codes: &mut CodeSection, program: &IRProgram) {
+    fn compile_function(
+        &mut self,
+        func: &IRFunction,
+        codes: &mut CodeSection,
+        program: &IRProgram,
+    ) {
         let mut locals: Vec<(u32, ValType)> = vec![];
         locals.extend(func.locals.iter().map(|t| (1, Self::type_to_valtype(t))));
         println!("Locals: {:?}", locals.clone());
         let mut f = Function::new(locals);
-        
 
         if func.name == "main" {
-            f.instruction(&Instruction::Call(1));  // alloc::init
-            f.instruction(&Instruction::Call(4));  // dalloc::dinit
+            f.instruction(&Instruction::Call(1)); // alloc::init
+            f.instruction(&Instruction::Call(4)); // dalloc::dinit
             for ir_struct in &program.structs {
                 f.instruction(&Instruction::I32Const(ir_struct.size as i32));
                 f.instruction(&Instruction::Call(2));
@@ -155,7 +174,11 @@ impl Codegen {
             IRExprKind::Local(index) => {
                 f.instruction(&Instruction::LocalGet(*index));
             }
-            IRExprKind::Binary { left, op: BinaryOp::Is, right } => {
+            IRExprKind::Binary {
+                left,
+                op: BinaryOp::Is,
+                right,
+            } => {
                 if let IRExprKind::Local(index) = &left.node {
                     self.compile_expr(right, f, false);
                     f.instruction(&Instruction::LocalTee(*index));
@@ -163,7 +186,11 @@ impl Codegen {
                     self.compile_expr(left, f, false);
                     f.instruction(&Instruction::LocalTee(0));
                     self.compile_expr(right, f, false);
-                    f.instruction(&Instruction::I64Store(MemArg { offset: 0, align: 3, memory_index: 0 }));
+                    f.instruction(&Instruction::I64Store(MemArg {
+                        offset: 0,
+                        align: 3,
+                        memory_index: 0,
+                    }));
                     f.instruction(&Instruction::LocalGet(0));
                 }
             }
@@ -225,21 +252,18 @@ impl Codegen {
                     _ => panic!("Unsupported binary operation"),
                 }
             }
-            IRExprKind::Unary { op, expr } => {
-                match op {
-                    UnaryOp::Minus => {
-                        f.instruction(&Instruction::I64Const(0));
-                        self.compile_expr(expr, f, false);
-                        f.instruction(&Instruction::I64Sub);
-                    }
-                    UnaryOp::Not => {
-                        self.compile_expr(expr, f, false);
-                        f.instruction(&Instruction::I32Eqz);
-                    }
-                    UnaryOp::Raise => {
-                    }
+            IRExprKind::Unary { op, expr } => match op {
+                UnaryOp::Minus => {
+                    f.instruction(&Instruction::I64Const(0));
+                    self.compile_expr(expr, f, false);
+                    f.instruction(&Instruction::I64Sub);
                 }
-            }
+                UnaryOp::Not => {
+                    self.compile_expr(expr, f, false);
+                    f.instruction(&Instruction::I32Eqz);
+                }
+                UnaryOp::Raise => {}
+            },
             IRExprKind::Call { callee, args } => {
                 f.instruction(&Instruction::I32Const(0));
                 f.instruction(&Instruction::I64Const(0));
@@ -255,13 +279,16 @@ impl Codegen {
                     self.compile_expr(arg, f, false);
                 }
                 f.instruction(&Instruction::LocalGet(0));
-                
+
                 f.instruction(&Instruction::CallIndirect {
                     type_index: 5,
                     table_index: 0,
                 });
             }
-            IRExprKind::New { struct_index, fields } => {
+            IRExprKind::New {
+                struct_index,
+                fields,
+            } => {
                 if !preallocated {
                     f.instruction(&Instruction::I32Const(*struct_index as i32));
                     f.instruction(&Instruction::Call(3));
@@ -272,10 +299,18 @@ impl Codegen {
                     self.compile_expr(field_expr, f, false);
                     match field_expr.ty.kind {
                         TypeKind::Struct { .. } => {
-                            f.instruction(&Instruction::I32Store(MemArg { offset, align: 2, memory_index: 0 }));
+                            f.instruction(&Instruction::I32Store(MemArg {
+                                offset,
+                                align: 2,
+                                memory_index: 0,
+                            }));
                         }
                         _ => {
-                            f.instruction(&Instruction::I64Store(MemArg { offset, align: 3, memory_index: 0 }));
+                            f.instruction(&Instruction::I64Store(MemArg {
+                                offset,
+                                align: 3,
+                                memory_index: 0,
+                            }));
                         }
                     }
                     f.instruction(&Instruction::LocalGet(0));
@@ -285,9 +320,17 @@ impl Codegen {
             IRExprKind::Field { object, offset } => {
                 self.compile_expr(object, f, false);
                 if matches!(expr.ty.kind, TypeKind::Struct { .. }) {
-                    f.instruction(&Instruction::I32Load(MemArg { offset: *offset as u64, align: 2, memory_index: 0 }));
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: *offset as u64,
+                        align: 2,
+                        memory_index: 0,
+                    }));
                 } else {
-                    f.instruction(&Instruction::I64Load(MemArg { offset: *offset as u64, align: 3, memory_index: 0 }));
+                    f.instruction(&Instruction::I64Load(MemArg {
+                        offset: *offset as u64,
+                        align: 3,
+                        memory_index: 0,
+                    }));
                 }
             }
             IRExprKind::FieldReference { object, offset } => {
@@ -305,7 +348,7 @@ impl Codegen {
 
                 f.instruction(&Instruction::I32Add);
             }
-            
+
             IRExprKind::List(elements) => {
                 f.instruction(&Instruction::I32Const(1));
                 f.instruction(&Instruction::I32Const((elements.len() * 8) as i32));
@@ -316,10 +359,13 @@ impl Codegen {
                 }
                 for (i, element) in elements.iter().enumerate() {
                     self.compile_expr(element, f, false);
-                    f.instruction(&Instruction::I64Store(MemArg { offset: (i * 8) as u64, align: 3, memory_index: 0 }));
+                    f.instruction(&Instruction::I64Store(MemArg {
+                        offset: (i * 8) as u64,
+                        align: 3,
+                        memory_index: 0,
+                    }));
                 }
-                
-            },
+            }
             IRExprKind::Index { list, index } => {
                 self.compile_expr(list, f, false);
 
@@ -330,8 +376,12 @@ impl Codegen {
 
                 f.instruction(&Instruction::I32Add);
 
-                f.instruction(&Instruction::I64Load(MemArg { offset: 0, align: 3, memory_index: 0 }));
-            },
+                f.instruction(&Instruction::I64Load(MemArg {
+                    offset: 0,
+                    align: 3,
+                    memory_index: 0,
+                }));
+            }
             IRExprKind::Match { .. } => todo!(),
             IRExprKind::UnwrapError(_) => todo!(),
             IRExprKind::UnwrapNull(_) => todo!(),
@@ -363,7 +413,11 @@ impl Codegen {
             IRStmt::Continue => {
                 f.instruction(&Instruction::Br(0));
             }
-            IRStmt::If { condition, then_block, else_block } => {
+            IRStmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
                 self.compile_expr(condition, f, false);
                 f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
                 for stmt in then_block {
@@ -390,7 +444,12 @@ impl Codegen {
                 f.instruction(&Instruction::End);
                 f.instruction(&Instruction::End);
             }
-            IRStmt::For { init, condition, update, body } => {
+            IRStmt::For {
+                init,
+                condition,
+                update,
+                body,
+            } => {
                 f.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty));
                 self.compile_stmt(init, f);
                 f.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
@@ -410,9 +469,16 @@ impl Codegen {
                 f.instruction(&Instruction::Call(0));
             }
             IRStmt::Produce(_) => todo!(),
-            IRStmt::LocalClosure { fn_index, captures, index } => {
+            IRStmt::LocalClosure {
+                fn_index,
+                captures,
+                index,
+            } => {
                 match &captures.node {
-                    IRExprKind::New { struct_index, fields: _ } => {
+                    IRExprKind::New {
+                        struct_index,
+                        fields: _,
+                    } => {
                         f.instruction(&Instruction::I32Const(*struct_index as i32));
                         f.instruction(&Instruction::Call(3));
                         f.instruction(&Instruction::LocalTee(0));
@@ -428,7 +494,7 @@ impl Codegen {
                 f.instruction(&Instruction::LocalSet(*index));
                 f.instruction(&Instruction::LocalGet(0));
                 self.compile_expr(captures, f, true);
-            },
+            }
         }
     }
 }
