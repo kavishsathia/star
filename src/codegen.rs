@@ -12,6 +12,7 @@ impl Codegen {
     fn type_to_valtype(ty: &Type) -> ValType {
         match &ty.kind {
             TypeKind::Function { .. } => ValType::I64,
+            TypeKind::List { .. } => ValType::I32,
             TypeKind::Struct { .. } => ValType::I32,
             _ => ValType::I64,
         }
@@ -294,8 +295,43 @@ impl Codegen {
                 f.instruction(&Instruction::I32Const(*offset as i32));
                 f.instruction(&Instruction::I32Add);
             }
-            IRExprKind::List(_) => todo!(),
-            IRExprKind::Index { .. } => todo!(),
+            IRExprKind::IndexReference { list, index } => {
+                self.compile_expr(list, f, false);
+
+                self.compile_expr(index, f, false);
+                f.instruction(&Instruction::I64Const(8));
+                f.instruction(&Instruction::I64Mul);
+                f.instruction(&Instruction::I32WrapI64);
+
+                f.instruction(&Instruction::I32Add);
+            }
+            
+            IRExprKind::List(elements) => {
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Const((elements.len() * 8) as i32));
+                f.instruction(&Instruction::Call(5));
+                f.instruction(&Instruction::LocalTee(0));
+                for (_, _) in elements.iter().enumerate() {
+                    f.instruction(&Instruction::LocalGet(0));
+                }
+                for (i, element) in elements.iter().enumerate() {
+                    self.compile_expr(element, f, false);
+                    f.instruction(&Instruction::I64Store(MemArg { offset: (i * 8) as u64, align: 3, memory_index: 0 }));
+                }
+                
+            },
+            IRExprKind::Index { list, index } => {
+                self.compile_expr(list, f, false);
+
+                self.compile_expr(index, f, false);
+                f.instruction(&Instruction::I64Const(8));
+                f.instruction(&Instruction::I64Mul);
+                f.instruction(&Instruction::I32WrapI64);
+
+                f.instruction(&Instruction::I32Add);
+
+                f.instruction(&Instruction::I64Load(MemArg { offset: 0, align: 3, memory_index: 0 }));
+            },
             IRExprKind::Match { .. } => todo!(),
             IRExprKind::UnwrapError(_) => todo!(),
             IRExprKind::UnwrapNull(_) => todo!(),

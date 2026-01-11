@@ -33,6 +33,7 @@ pub enum IRExprKind {
     Field { object: Box<IRExpr>, offset: u32 },
     FieldReference { object: Box<IRExpr>, offset: u32 },
     Index { list: Box<IRExpr>, index: Box<IRExpr> },
+    IndexReference { list: Box<IRExpr>, index: Box<IRExpr> },
 
     Match { expr: Box<IRExpr>, binding: u32, arms: Vec<(IRPattern, Vec<IRStmt>)> },
 

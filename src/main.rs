@@ -21,19 +21,24 @@ use codegen::Codegen;
 
 fn main() {
     let source = r#"
-        struct Node {
-            value: integer,
-            next: Node?,
-        }
-
         fn main(): integer {
-            let node: Node = new Node {
-                value: 10,
-                next: null,
-            };
+            let arr: {integer} = {5,4,3,2,1};
 
-            node.value = 20;
-            return node.value;
+            for let i: integer = 0; i < 5; i = i + 1; {
+                for let j: integer = 0; j < 4 - i; j = j + 1; {
+                    if arr[j] > arr[j + 1] {
+                        let temp: integer = arr[j];
+                        arr[j] = arr[j + 1];
+                        arr[j + 1] = temp;
+                    }
+                }
+            }
+            
+            for let k: integer = 0; k < 5; k = k + 1; {
+                print arr[k] << 3;
+            }
+
+            return 0;
         }
     "#;
 

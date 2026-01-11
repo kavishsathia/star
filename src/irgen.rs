@@ -273,6 +273,26 @@ impl IRGenerator {
                             ty: expr.ty.clone(),
                         }
                     },
+                    Expr::Index { object, key } => {
+                        let ir_object = self.lower_expr(object);
+                        let ir_key = self.lower_expr(key);
+                        let ir_left = IRExpr {
+                            node: crate::ir::IRExprKind::IndexReference {
+                                list: Box::new(ir_object),
+                                index: Box::new(ir_key),
+                            },
+                            ty: left.ty.clone(),
+                        };
+                        let ir_right = self.lower_expr(right);
+                        IRExpr {
+                            node: crate::ir::IRExprKind::Binary {
+                                left: Box::new(ir_left),
+                                op: BinaryOp::Is,
+                                right: Box::new(ir_right),
+                            },
+                            ty: expr.ty.clone(),
+                        }
+                    },
                     _ => panic!("Left side of 'is' must be a local or field"),
                 }
             },
