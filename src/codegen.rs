@@ -384,7 +384,29 @@ impl Codegen {
             }
             IRExprKind::Match { .. } => todo!(),
             IRExprKind::UnwrapError(_) => todo!(),
-            IRExprKind::UnwrapNull(_) => todo!(),
+            IRExprKind::UnwrapNull(expr) => {
+                self.compile_expr(expr, f, false);
+                f.instruction(&Instruction::LocalTee(0));
+                f.instruction(&Instruction::I64Load(MemArg {
+                    offset: 0,
+                    align: 3,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::I64Const(0));
+                f.instruction(&Instruction::I64Eq);
+                f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+                    ValType::I64,
+                )));
+                f.instruction(&Instruction::Unreachable);
+                f.instruction(&Instruction::Else);
+                f.instruction(&Instruction::LocalGet(0));
+                f.instruction(&Instruction::I64Load(MemArg {
+                    offset: 8,
+                    align: 3,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::End);
+            }
         }
     }
 

@@ -24,7 +24,9 @@ use wrap::Wrapper;
 fn main() {
     let source = r#"
         fn main(): integer {
-            let i: integer? = null;
+            let i: integer? = 2;
+
+            print i??;
 
 
             return 0;
