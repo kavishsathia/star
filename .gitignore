@@ -1,3 +1,4 @@
 /target
 /alloc/target
+/dalloc/target
 output.wasm

@@ -23,16 +23,18 @@ impl Codegen {
         Codegen {}
     }
 
-    const IMPORT_COUNT: u32 = 4;
+    const IMPORT_COUNT: u32 = 6;
 
     pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
         let mut module = Module::new();
 
         let mut types = TypeSection::new();
-        types.ty().function(vec![ValType::I64], vec![]);
-        types.ty().function(vec![], vec![]);
-        types.ty().function(vec![ValType::I32], vec![]);
-        types.ty().function(vec![ValType::I32], vec![ValType::I32]);
+        types.ty().function(vec![ValType::I64], vec![]);           // 0: print_i64
+        types.ty().function(vec![], vec![]);                        // 1: init
+        types.ty().function(vec![ValType::I32], vec![]);            // 2: register
+        types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 3: falloc
+        types.ty().function(vec![], vec![]);                        // 4: dinit
+        types.ty().function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 5: dalloc
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
@@ -46,8 +48,17 @@ impl Codegen {
         imports.import("alloc", "init", EntityType::Function(1));
         imports.import("alloc", "register", EntityType::Function(2));
         imports.import("alloc", "falloc", EntityType::Function(3));
+        imports.import("dalloc", "dinit", EntityType::Function(4));
+        imports.import("dalloc", "dalloc", EntityType::Function(5));
         imports.import("alloc", "memory", EntityType::Memory(wasm_encoder::MemoryType {
             minimum: 1,
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        }));
+        imports.import("dalloc", "memory", EntityType::Memory(wasm_encoder::MemoryType {
+            minimum: 16,
             maximum: None,
             memory64: false,
             shared: false,
@@ -107,7 +118,8 @@ impl Codegen {
         
 
         if func.name == "main" {
-            f.instruction(&Instruction::Call(1));
+            f.instruction(&Instruction::Call(1));  // alloc::init
+            f.instruction(&Instruction::Call(4));  // dalloc::dinit
             for ir_struct in &program.structs {
                 f.instruction(&Instruction::I32Const(ir_struct.size as i32));
                 f.instruction(&Instruction::Call(2));
