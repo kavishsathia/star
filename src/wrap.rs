@@ -50,7 +50,12 @@ impl Wrapper {
         })
     }
 
-    fn wrap_to_type(&self, expr: AnalyzedExpr, expected: &Type, is_raised: bool) -> AnalyzedExpr {
+    fn wrap_to_type(
+        &mut self,
+        expr: AnalyzedExpr,
+        expected: &Type,
+        is_raised: bool,
+    ) -> AnalyzedExpr {
         if expr.ty.kind == TypeKind::Null
             || is_raised
             || ((!expr.ty.errorable && !expr.ty.nullable)
@@ -87,7 +92,7 @@ impl Wrapper {
         }
     }
 
-    fn wrap_expr(&self, expr: AnalyzedExpr) -> AnalyzedExpr {
+    fn wrap_expr(&mut self, expr: AnalyzedExpr) -> AnalyzedExpr {
         match expr.expr {
             Expr::Binary {
                 left,
@@ -95,8 +100,8 @@ impl Wrapper {
                 right,
             } => {
                 let wrapped_left = self.wrap_expr(*left);
-                let wrapped_right =
-                    self.wrap_to_type(self.wrap_expr(*right), &wrapped_left.ty, false);
+                let wrapped_right_inner = self.wrap_expr(*right);
+                let wrapped_right = self.wrap_to_type(wrapped_right_inner, &wrapped_left.ty, false);
                 AnalyzedExpr {
                     ty: expr.ty.clone(),
                     expr: Expr::Binary {
@@ -106,26 +111,42 @@ impl Wrapper {
                     },
                 }
             }
+            Expr::Binary { left, op, right } => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::Binary {
+                    left: Box::new(self.wrap_expr(*left)),
+                    op,
+                    right: Box::new(self.wrap_expr(*right)),
+                },
+            },
             Expr::Unary {
-                expr,
+                expr: inner,
                 op: UnaryOp::Raise,
             } => {
-                let wrapped_expr = self.wrap_expr(*expr);
-                self.wrap_to_type(
-                    wrapped_expr,
-                    &self.current_return_type.as_ref().unwrap(),
-                    true,
-                )
+                let wrapped_expr = self.wrap_expr(*inner);
+                let ret_type = self.current_return_type.as_ref().unwrap().clone();
+                self.wrap_to_type(wrapped_expr, &ret_type, true)
             }
+            Expr::Unary { expr: inner, op } => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::Unary {
+                    expr: Box::new(self.wrap_expr(*inner)),
+                    op,
+                },
+            },
             Expr::New { name, fields } => {
                 let wrapped_fields: Vec<(String, AnalyzedExpr)> = fields
                     .into_iter()
                     .map(|(field_name, field_expr)| {
-                        let expected_type = self.get_field_type(&name, &field_name).unwrap();
-                        (
-                            field_name,
-                            self.wrap_to_type(self.wrap_expr(field_expr), &expected_type, false),
-                        )
+                        let wrapped = self.wrap_expr(field_expr);
+                        if let Some(expected_type) = self.get_field_type(&name, &field_name) {
+                            (
+                                field_name,
+                                self.wrap_to_type(wrapped, &expected_type, false),
+                            )
+                        } else {
+                            (field_name, wrapped)
+                        }
                     })
                     .collect();
 
@@ -139,25 +160,79 @@ impl Wrapper {
             }
             Expr::Call { callee, args } => match &callee.ty.kind {
                 TypeKind::Function { params, .. } => {
+                    let params = params.clone();
+                    let wrapped_callee = self.wrap_expr(*callee);
                     let wrapped_args: Vec<AnalyzedExpr> = args
                         .into_iter()
                         .enumerate()
                         .map(|(i, arg_expr)| {
-                            self.wrap_to_type(self.wrap_expr(arg_expr), &params[i], false)
+                            let wrapped = self.wrap_expr(arg_expr);
+                            self.wrap_to_type(wrapped, &params[i], false)
                         })
                         .collect();
 
                     AnalyzedExpr {
                         ty: expr.ty.clone(),
                         expr: Expr::Call {
-                            callee,
+                            callee: Box::new(wrapped_callee),
                             args: wrapped_args,
                         },
                     }
                 }
                 _ => panic!("Callee is not a function type"),
             },
-            _ => expr,
+            Expr::Field { object, field } => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::Field {
+                    object: Box::new(self.wrap_expr(*object)),
+                    field,
+                },
+            },
+            Expr::Index { object, key } => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::Index {
+                    object: Box::new(self.wrap_expr(*object)),
+                    key: Box::new(self.wrap_expr(*key)),
+                },
+            },
+            Expr::List(elements) => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::List(elements.into_iter().map(|e| self.wrap_expr(e)).collect()),
+            },
+            Expr::Match {
+                expr: match_expr,
+                binding,
+                arms,
+            } => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::Match {
+                    expr: Box::new(self.wrap_expr(*match_expr)),
+                    binding,
+                    arms: arms
+                        .into_iter()
+                        .map(|(pattern, stmts)| {
+                            (
+                                pattern,
+                                stmts.into_iter().map(|s| self.wrap_stmt(s)).collect(),
+                            )
+                        })
+                        .collect(),
+                },
+            },
+            Expr::UnwrapNull(inner) => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::UnwrapNull(Box::new(self.wrap_expr(*inner))),
+            },
+            Expr::UnwrapError(inner) => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::UnwrapError(Box::new(self.wrap_expr(*inner))),
+            },
+            Expr::Null
+            | Expr::Integer(_)
+            | Expr::Float(_)
+            | Expr::String(_)
+            | Expr::Boolean(_)
+            | Expr::Identifier { .. } => expr,
         }
     }
 
@@ -171,7 +246,8 @@ impl Wrapper {
                 index,
             } => {
                 let wrapped_value = if let Some(v) = value {
-                    Some(self.wrap_to_type(self.wrap_expr(v), &ty, false))
+                    let wrapped = self.wrap_expr(v);
+                    Some(self.wrap_to_type(wrapped, &ty, false))
                 } else {
                     None
                 };
@@ -190,7 +266,8 @@ impl Wrapper {
                 captured,
                 index,
             } => {
-                let wrapped_value = self.wrap_to_type(self.wrap_expr(value), &ty, false);
+                let wrapped = self.wrap_expr(value);
+                let wrapped_value = self.wrap_to_type(wrapped, &ty, false);
                 AnalyzedStatement::Const {
                     name,
                     ty,
@@ -201,28 +278,58 @@ impl Wrapper {
             }
             AnalyzedStatement::Return(expr) => {
                 let wrapped_expr = if let Some(ret_expr) = expr {
-                    Some(self.wrap_to_type(
-                        self.wrap_expr(ret_expr),
-                        self.current_return_type.as_ref().unwrap(),
-                        false,
-                    ))
+                    let wrapped = self.wrap_expr(ret_expr);
+                    let ret_type = self.current_return_type.as_ref().unwrap().clone();
+                    Some(self.wrap_to_type(wrapped, &ret_type, false))
                 } else {
-                    Some(self.wrap_to_type(
-                        self.wrap_expr(AnalyzedExpr {
-                            expr: Expr::Null,
-                            ty: Type {
-                                kind: TypeKind::Null,
-                                nullable: false,
-                                errorable: false,
-                            },
-                        }),
-                        self.current_return_type.as_ref().unwrap(),
-                        false,
-                    ))
+                    let null_expr = AnalyzedExpr {
+                        expr: Expr::Null,
+                        ty: Type {
+                            kind: TypeKind::Null,
+                            nullable: false,
+                            errorable: false,
+                        },
+                    };
+                    let wrapped = self.wrap_expr(null_expr);
+                    let ret_type = self.current_return_type.as_ref().unwrap().clone();
+                    Some(self.wrap_to_type(wrapped, &ret_type, false))
                 };
                 AnalyzedStatement::Return(wrapped_expr)
             }
-            _ => stmt,
+            AnalyzedStatement::Expr(e) => AnalyzedStatement::Expr(self.wrap_expr(e)),
+            AnalyzedStatement::If {
+                condition,
+                then_block,
+                else_block,
+            } => AnalyzedStatement::If {
+                condition: self.wrap_expr(condition),
+                then_block: then_block.into_iter().map(|s| self.wrap_stmt(s)).collect(),
+                else_block: else_block
+                    .map(|stmts| stmts.into_iter().map(|s| self.wrap_stmt(s)).collect()),
+            },
+            AnalyzedStatement::While { condition, body } => AnalyzedStatement::While {
+                condition: self.wrap_expr(condition),
+                body: body.into_iter().map(|s| self.wrap_stmt(s)).collect(),
+            },
+            AnalyzedStatement::For {
+                init,
+                condition,
+                update,
+                body,
+            } => AnalyzedStatement::For {
+                init: Box::new(self.wrap_stmt(*init)),
+                condition: self.wrap_expr(condition),
+                update: Box::new(self.wrap_stmt(*update)),
+                body: body.into_iter().map(|s| self.wrap_stmt(s)).collect(),
+            },
+            AnalyzedStatement::Print(e) => AnalyzedStatement::Print(self.wrap_expr(e)),
+            AnalyzedStatement::Produce(e) => AnalyzedStatement::Produce(self.wrap_expr(e)),
+            AnalyzedStatement::Break
+            | AnalyzedStatement::Continue
+            | AnalyzedStatement::Struct { .. }
+            | AnalyzedStatement::Error { .. }
+            | AnalyzedStatement::Function { .. }
+            | AnalyzedStatement::LocalClosure { .. } => stmt,
         }
     }
 
