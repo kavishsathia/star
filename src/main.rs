@@ -26,33 +26,12 @@ fn main() {
         fn main(): integer {
             let arr: {integer} = {5, 3, 4, 2, 1};
 
-            fn quicksort(arr: {integer}): {integer} {
-                if #arr < 2 {
-                    return arr;
-                }
-                let pivot: integer = arr[0];
-                let left: {integer} = {};
-                let right: {integer} = {};
+            let subarr: {integer} = arr[1:4];
 
-                for let i: integer = 1; i < #arr; i = i + 1; {
-                    if arr[i] < pivot {
-                        left = left + {arr[i]};
-                    } else {
-                        right = right + {arr[i]};
-                    }
-                }
-
-                left = quicksort(left);
-                right = quicksort(right);
-                return left + {pivot} + right;
+            for let i: integer = 0; i < #subarr; i = i + 1; {
+                print subarr[i];
             }
 
-            arr = quicksort(arr);
-
-            for let i: integer = 0; i < #arr; i = i + 1; {
-                print arr[i];
-            }
-            
             return 0;
         }
     "#;

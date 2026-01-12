@@ -397,7 +397,9 @@ impl Codegen {
             IRExprKind::Slice { expr, start, end } => {
                 self.compile_expr(expr, f, false);
                 self.compile_expr(start, f, false);
+                f.instruction(&Instruction::I32WrapI64);
                 self.compile_expr(end, f, false);
+                f.instruction(&Instruction::I32WrapI64);
                 f.instruction(&Instruction::Call(7));
             }
 
