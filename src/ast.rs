@@ -103,6 +103,11 @@ pub enum Expr {
         binding: String,
         arms: Vec<(Pattern, Vec<Statement>)>,
     },
+    Slice {
+        expr: Box<Expr>,
+        start: Box<Expr>,
+        end: Box<Expr>,
+    },
     UnwrapError(Box<Expr>),
     UnwrapNull(Box<Expr>),
 }

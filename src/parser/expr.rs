@@ -212,11 +212,26 @@ impl<'a> Parser<'a> {
             } else if *op == Token::LBracket {
                 self.advance();
                 let expr = self.parse_expression(0);
-                self.expect(&Token::RBracket);
-                left = Expr::Index {
-                    object: Box::new(left),
-                    key: Box::new(expr),
-                };
+                if self.check(&Token::Colon) {
+                    self.advance();
+                    let end = if !self.check(&Token::RBracket) {
+                        Box::new(self.parse_expression(0))
+                    } else {
+                        panic!("Expected end expression in slice, found {:?}", self.peek());
+                    };
+                    self.expect(&Token::RBracket);
+                    left = Expr::Slice {
+                        expr: Box::new(left),
+                        start: Box::new(expr),
+                        end: end,
+                    };
+                } else {
+                    self.expect(&Token::RBracket);
+                    left = Expr::Index {
+                        object: Box::new(left),
+                        key: Box::new(expr),
+                    };
+                }
             } else if *op == Token::NotNull {
                 self.advance();
                 left = Expr::UnwrapNull(Box::new(left));

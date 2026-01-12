@@ -27,7 +27,7 @@ impl Codegen {
         Codegen {}
     }
 
-    const IMPORT_COUNT: u32 = 6;
+    const IMPORT_COUNT: u32 = 8;
 
     pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
         let mut module = Module::new();
@@ -41,10 +41,18 @@ impl Codegen {
         types
             .ty()
             .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 5: dalloc
+        types
+            .ty()
+            .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 6: dconcat
+        types.ty().function(
+            vec![ValType::I32, ValType::I32, ValType::I32],
+            vec![ValType::I32],
+        ); // 7: dslice
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
             let results: Vec<ValType> = vec![Self::type_to_valtype(&func.returns)];
+            println!("Function params: {:?}, results: {:?}", params, results);
             types.ty().function(params, results);
         }
         module.section(&types);
@@ -56,6 +64,8 @@ impl Codegen {
         imports.import("alloc", "falloc", EntityType::Function(3));
         imports.import("dalloc", "dinit", EntityType::Function(4));
         imports.import("dalloc", "dalloc", EntityType::Function(5));
+        imports.import("dalloc", "dconcat", EntityType::Function(6));
+        imports.import("dalloc", "dslice", EntityType::Function(7));
         imports.import(
             "alloc",
             "memory",
@@ -135,6 +145,7 @@ impl Codegen {
         let mut locals: Vec<(u32, ValType)> = vec![];
         locals.extend(func.locals.iter().map(|t| (1, Self::type_to_valtype(t))));
         println!("Locals: {:?}", locals.clone());
+        println!("Compiling function: {}", func.name);
         let mut f = Function::new(locals);
 
         if func.name == "main" {
@@ -209,7 +220,16 @@ impl Codegen {
                 self.compile_expr(right, f, false);
                 match op {
                     BinaryOp::Plus => {
-                        f.instruction(&Instruction::I64Add);
+                        if left.ty.kind == TypeKind::Integer {
+                            f.instruction(&Instruction::I64Add);
+                            return;
+                        } else if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Add);
+                            return;
+                        } else {
+                            f.instruction(&Instruction::Call(6));
+                            return;
+                        }
                     }
                     BinaryOp::Minus => {
                         f.instruction(&Instruction::I64Sub);
@@ -302,7 +322,7 @@ impl Codegen {
                 f.instruction(&Instruction::LocalGet(0));
 
                 f.instruction(&Instruction::CallIndirect {
-                    type_index: 5,
+                    type_index: 9,
                     table_index: 0,
                 });
             }
@@ -319,7 +339,7 @@ impl Codegen {
                 for field_expr in fields {
                     self.compile_expr(field_expr, f, false);
                     match field_expr.ty.kind {
-                        TypeKind::Struct { .. } => {
+                        TypeKind::Struct { .. } | TypeKind::List { .. } => {
                             f.instruction(&Instruction::I32Store(MemArg {
                                 offset,
                                 align: 2,
@@ -340,7 +360,11 @@ impl Codegen {
             }
             IRExprKind::Field { object, offset } => {
                 self.compile_expr(object, f, false);
-                if matches!(expr.ty.kind, TypeKind::Struct { .. }) {
+                if matches!(
+                    expr.ty.kind,
+                    TypeKind::Struct { .. } | TypeKind::List { .. }
+                ) {
+                    println!("Loading struct/list field at offset {}", offset);
                     f.instruction(&Instruction::I32Load(MemArg {
                         offset: *offset as u64,
                         align: 2,
@@ -368,6 +392,13 @@ impl Codegen {
                 f.instruction(&Instruction::I32WrapI64);
 
                 f.instruction(&Instruction::I32Add);
+            }
+
+            IRExprKind::Slice { expr, start, end } => {
+                self.compile_expr(expr, f, false);
+                self.compile_expr(start, f, false);
+                self.compile_expr(end, f, false);
+                f.instruction(&Instruction::Call(7));
             }
 
             IRExprKind::List(elements) => {

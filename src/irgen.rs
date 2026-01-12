@@ -53,7 +53,16 @@ impl IRGenerator {
 
     fn lower_function(&mut self, stmt: &AnalyzedStatement) -> IRFunction {
         match stmt {
-            AnalyzedStatement::Function { name, params, returns, body, captured, index, fn_index, locals } => {
+            AnalyzedStatement::Function {
+                name,
+                params,
+                returns,
+                body,
+                captured,
+                index,
+                fn_index,
+                locals,
+            } => {
                 let ir_body: Vec<IRStmt> = body.iter().map(|s| self.lower_stmt(s)).collect();
                 IRFunction {
                     name: name.clone(),
@@ -74,8 +83,14 @@ impl IRGenerator {
             AnalyzedStatement::Expr(expr) => {
                 let ir_expr = self.lower_expr(expr);
                 IRStmt::Expr(ir_expr)
-            },
-            AnalyzedStatement::Let { name, ty, value, captured, index } => {
+            }
+            AnalyzedStatement::Let {
+                name,
+                ty,
+                value,
+                captured,
+                index,
+            } => {
                 let ir_value = value.as_ref().map(|v| self.lower_expr(v));
                 IRStmt::LocalSet {
                     value: ir_value.unwrap_or(IRExpr {
@@ -84,37 +99,49 @@ impl IRGenerator {
                     }),
                     index: index.unwrap(),
                 }
-            },
-            AnalyzedStatement::Const { name, ty, value, captured, index } => {
+            }
+            AnalyzedStatement::Const {
+                name,
+                ty,
+                value,
+                captured,
+                index,
+            } => {
                 let ir_value = self.lower_expr(value);
                 IRStmt::LocalSet {
                     value: ir_value,
                     index: index.unwrap(),
                 }
-            },
+            }
             AnalyzedStatement::Return(expr) => {
                 let ir_expr = expr.as_ref().map(|e| self.lower_expr(e));
                 IRStmt::Return(ir_expr)
-            },
-            AnalyzedStatement::Break => {
-                IRStmt::Break
-            },
-            AnalyzedStatement::Continue => {
-                IRStmt::Continue
-            },
-            AnalyzedStatement::If { condition, then_block, else_block } => {
+            }
+            AnalyzedStatement::Break => IRStmt::Break,
+            AnalyzedStatement::Continue => IRStmt::Continue,
+            AnalyzedStatement::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
                 let ir_condition = self.lower_expr(condition);
-                let ir_then_block: Vec<IRStmt> = then_block.iter().map(|s| self.lower_stmt(s)).collect();
-                let ir_else_block: Option<Vec<IRStmt>> = else_block.as_ref().map(|stmts| {
-                    stmts.iter().map(|s| self.lower_stmt(s)).collect()
-                });
+                let ir_then_block: Vec<IRStmt> =
+                    then_block.iter().map(|s| self.lower_stmt(s)).collect();
+                let ir_else_block: Option<Vec<IRStmt>> = else_block
+                    .as_ref()
+                    .map(|stmts| stmts.iter().map(|s| self.lower_stmt(s)).collect());
                 IRStmt::If {
                     condition: ir_condition,
                     then_block: ir_then_block,
                     else_block: ir_else_block,
                 }
-            },
-            AnalyzedStatement::For { init, condition, update, body } => {
+            }
+            AnalyzedStatement::For {
+                init,
+                condition,
+                update,
+                body,
+            } => {
                 let ir_init = Box::new(self.lower_stmt(init));
                 let ir_condition = self.lower_expr(condition);
                 let ir_update = Box::new(self.lower_stmt(update));
@@ -125,7 +152,7 @@ impl IRGenerator {
                     update: ir_update,
                     body: ir_body,
                 }
-            },
+            }
             AnalyzedStatement::While { condition, body } => {
                 let ir_condition = self.lower_expr(condition);
                 let ir_body: Vec<IRStmt> = body.iter().map(|s| self.lower_stmt(s)).collect();
@@ -133,70 +160,66 @@ impl IRGenerator {
                     condition: ir_condition,
                     body: ir_body,
                 }
-            },
+            }
             AnalyzedStatement::Print(expr) => {
                 let ir_expr = self.lower_expr(expr);
                 IRStmt::Print(ir_expr)
-            },
+            }
             AnalyzedStatement::Produce(expr) => {
                 let ir_expr = self.lower_expr(expr);
                 IRStmt::Produce(ir_expr)
-            },
-            AnalyzedStatement::Function { .. } => panic!("unexpected nested function after flattening"),
+            }
+            AnalyzedStatement::Function { .. } => {
+                panic!("unexpected nested function after flattening")
+            }
             AnalyzedStatement::Struct { .. } => panic!("unexpected struct in function body"),
             AnalyzedStatement::Error { .. } => panic!("unexpected error in function body"),
-            AnalyzedStatement::LocalClosure { fn_index, captures, index } => {
+            AnalyzedStatement::LocalClosure {
+                fn_index,
+                captures,
+                index,
+            } => {
                 let ir_captures = self.lower_expr(captures);
                 IRStmt::LocalClosure {
                     captures: Box::new(ir_captures),
                     index: *index,
                     fn_index: *fn_index,
-
                 }
-            },
+            }
         }
     }
 
     fn lower_expr(&mut self, expr: &AnalyzedExpr) -> IRExpr {
         match &expr.expr {
-            Expr::Null => {
-                IRExpr {
-                    node: crate::ir::IRExprKind::Null,
-                    ty: expr.ty.clone(),
-                }
+            Expr::Null => IRExpr {
+                node: crate::ir::IRExprKind::Null,
+                ty: expr.ty.clone(),
             },
-            Expr::Integer(val) => {
-                IRExpr {
-                    node: crate::ir::IRExprKind::Integer(*val),
-                    ty: expr.ty.clone(),
-                }
+            Expr::Integer(val) => IRExpr {
+                node: crate::ir::IRExprKind::Integer(*val),
+                ty: expr.ty.clone(),
             },
-            Expr::Float(val) => {
-                IRExpr {
-                    node: crate::ir::IRExprKind::Float(*val),
-                    ty: expr.ty.clone(),
-                }
+            Expr::Float(val) => IRExpr {
+                node: crate::ir::IRExprKind::Float(*val),
+                ty: expr.ty.clone(),
             },
-            Expr::String(val) => {
-                IRExpr {
-                    node: crate::ir::IRExprKind::String(val.clone()),
-                    ty: expr.ty.clone(),
-                }
+            Expr::String(val) => IRExpr {
+                node: crate::ir::IRExprKind::String(val.clone()),
+                ty: expr.ty.clone(),
             },
-            Expr::Boolean(val) => {
-                IRExpr {
-                    node: crate::ir::IRExprKind::Boolean(*val),
-                    ty: expr.ty.clone(),
-                }
+            Expr::Boolean(val) => IRExpr {
+                node: crate::ir::IRExprKind::Boolean(*val),
+                ty: expr.ty.clone(),
             },
-            Expr::Identifier { name, index } => {
-                IRExpr {
-                    node: crate::ir::IRExprKind::Local(index.unwrap()),
-                    ty: expr.ty.clone(),
-                }
+            Expr::Identifier { name, index } => IRExpr {
+                node: crate::ir::IRExprKind::Local(index.unwrap()),
+                ty: expr.ty.clone(),
             },
-            Expr::List(elements) => {
-                IRExpr { node: crate::ir::IRExprKind::List(elements.iter().map(|e| self.lower_expr(e)).collect()), ty: expr.ty.clone() }
+            Expr::List(elements) => IRExpr {
+                node: crate::ir::IRExprKind::List(
+                    elements.iter().map(|e| self.lower_expr(e)).collect(),
+                ),
+                ty: expr.ty.clone(),
             },
             Expr::Field { object, field } => {
                 let ir_object = self.lower_expr(object);
@@ -212,7 +235,7 @@ impl IRGenerator {
                     },
                     ty: expr.ty.clone(),
                 }
-            },
+            }
             Expr::Index { object, key } => {
                 let ir_object = self.lower_expr(object);
                 let ir_key = self.lower_expr(key);
@@ -223,10 +246,26 @@ impl IRGenerator {
                     },
                     ty: expr.ty.clone(),
                 }
-            },
+            }
+            Expr::Slice { expr, start, end } => {
+                let ir_expr = self.lower_expr(expr);
+                let ir_start = self.lower_expr(start);
+                let ir_end = self.lower_expr(end);
+                IRExpr {
+                    node: crate::ir::IRExprKind::Slice {
+                        expr: Box::new(ir_expr),
+                        start: Box::new(ir_start),
+                        end: Box::new(ir_end),
+                    },
+                    ty: expr.ty.clone(),
+                }
+            }
             Expr::New { name, fields } => {
                 let struct_index = self.lookup_struct(name);
-                let ir_fields: Vec<IRExpr> = fields.iter().map(|(_, expr)| self.lower_expr(expr)).collect();
+                let ir_fields: Vec<IRExpr> = fields
+                    .iter()
+                    .map(|(_, expr)| self.lower_expr(expr))
+                    .collect();
                 IRExpr {
                     node: crate::ir::IRExprKind::New {
                         struct_index,
@@ -234,67 +273,69 @@ impl IRGenerator {
                     },
                     ty: expr.ty.clone(),
                 }
-            },
-            Expr::Binary { left, op: BinaryOp::Is, right } => {
-                match &left.expr {
-                    Expr::Identifier { name: _, index } => {
-                        let ir_left = self.lower_expr(left);
-                        let ir_right = self.lower_expr(right);
-                        IRExpr {
-                            node: crate::ir::IRExprKind::Binary {
-                                left: Box::new(ir_left),
-                                op: BinaryOp::Is,
-                                right: Box::new(ir_right),
-                            },
-                            ty: expr.ty.clone(),
-                        }
-                    },
-                    Expr::Field { object, field } => {
-                        let ir_object = self.lower_expr(&object);
-                        let struct_name = match &object.ty.kind {
-                            crate::ast::TypeKind::Struct { name } => name,
-                            _ => panic!("expected struct type for field access"),
-                        };
-                        let offset = self.get_field_offset(struct_name, &field);
-                        let ir_left = IRExpr {
-                            node: crate::ir::IRExprKind::FieldReference {
-                                object: Box::new(ir_object),
-                                offset,
-                            },
-                            ty: left.ty.clone(),
-                        };
-                        let ir_right = self.lower_expr(right);
-                        IRExpr {
-                            node: crate::ir::IRExprKind::Binary {
-                                left: Box::new(ir_left),
-                                op: BinaryOp::Is,
-                                right: Box::new(ir_right),
-                            },
-                            ty: expr.ty.clone(),
-                        }
-                    },
-                    Expr::Index { object, key } => {
-                        let ir_object = self.lower_expr(object);
-                        let ir_key = self.lower_expr(key);
-                        let ir_left = IRExpr {
-                            node: crate::ir::IRExprKind::IndexReference {
-                                list: Box::new(ir_object),
-                                index: Box::new(ir_key),
-                            },
-                            ty: left.ty.clone(),
-                        };
-                        let ir_right = self.lower_expr(right);
-                        IRExpr {
-                            node: crate::ir::IRExprKind::Binary {
-                                left: Box::new(ir_left),
-                                op: BinaryOp::Is,
-                                right: Box::new(ir_right),
-                            },
-                            ty: expr.ty.clone(),
-                        }
-                    },
-                    _ => panic!("Left side of 'is' must be a local or field"),
+            }
+            Expr::Binary {
+                left,
+                op: BinaryOp::Is,
+                right,
+            } => match &left.expr {
+                Expr::Identifier { name: _, index } => {
+                    let ir_left = self.lower_expr(left);
+                    let ir_right = self.lower_expr(right);
+                    IRExpr {
+                        node: crate::ir::IRExprKind::Binary {
+                            left: Box::new(ir_left),
+                            op: BinaryOp::Is,
+                            right: Box::new(ir_right),
+                        },
+                        ty: expr.ty.clone(),
+                    }
                 }
+                Expr::Field { object, field } => {
+                    let ir_object = self.lower_expr(&object);
+                    let struct_name = match &object.ty.kind {
+                        crate::ast::TypeKind::Struct { name } => name,
+                        _ => panic!("expected struct type for field access"),
+                    };
+                    let offset = self.get_field_offset(struct_name, &field);
+                    let ir_left = IRExpr {
+                        node: crate::ir::IRExprKind::FieldReference {
+                            object: Box::new(ir_object),
+                            offset,
+                        },
+                        ty: left.ty.clone(),
+                    };
+                    let ir_right = self.lower_expr(right);
+                    IRExpr {
+                        node: crate::ir::IRExprKind::Binary {
+                            left: Box::new(ir_left),
+                            op: BinaryOp::Is,
+                            right: Box::new(ir_right),
+                        },
+                        ty: expr.ty.clone(),
+                    }
+                }
+                Expr::Index { object, key } => {
+                    let ir_object = self.lower_expr(object);
+                    let ir_key = self.lower_expr(key);
+                    let ir_left = IRExpr {
+                        node: crate::ir::IRExprKind::IndexReference {
+                            list: Box::new(ir_object),
+                            index: Box::new(ir_key),
+                        },
+                        ty: left.ty.clone(),
+                    };
+                    let ir_right = self.lower_expr(right);
+                    IRExpr {
+                        node: crate::ir::IRExprKind::Binary {
+                            left: Box::new(ir_left),
+                            op: BinaryOp::Is,
+                            right: Box::new(ir_right),
+                        },
+                        ty: expr.ty.clone(),
+                    }
+                }
+                _ => panic!("Left side of 'is' must be a local or field"),
             },
             Expr::Binary { left, op, right } => {
                 let ir_left = self.lower_expr(left);
@@ -307,7 +348,7 @@ impl IRGenerator {
                     },
                     ty: expr.ty.clone(),
                 }
-            },
+            }
             Expr::Unary { op, expr: inner } => {
                 let ir_inner = self.lower_expr(inner);
                 IRExpr {
@@ -317,7 +358,7 @@ impl IRGenerator {
                     },
                     ty: expr.ty.clone(),
                 }
-            },
+            }
             Expr::Call { callee, args } => {
                 let ir_callee = self.lower_expr(callee);
                 let ir_args: Vec<IRExpr> = args.iter().map(|a| self.lower_expr(a)).collect();
@@ -328,7 +369,7 @@ impl IRGenerator {
                     },
                     ty: expr.ty.clone(),
                 }
-            },
+            }
             Expr::Match { .. } => todo!(),
             Expr::UnwrapError(inner) => {
                 let ir_inner = self.lower_expr(inner);
@@ -336,14 +377,14 @@ impl IRGenerator {
                     node: crate::ir::IRExprKind::UnwrapError(Box::new(ir_inner)),
                     ty: expr.ty.clone(),
                 }
-            },
+            }
             Expr::UnwrapNull(inner) => {
                 let ir_inner = self.lower_expr(inner);
                 IRExpr {
                     node: crate::ir::IRExprKind::UnwrapNull(Box::new(ir_inner)),
                     ty: expr.ty.clone(),
                 }
-            },
+            }
         }
     }
 
@@ -358,11 +399,18 @@ impl IRGenerator {
 
     fn lookup_struct(&self, name: &str) -> u32 {
         println!("Looking up struct: {:?}", self.structs);
-        self.structs.iter().position(|s| s.name == name).expect("struct not found") as u32
+        self.structs
+            .iter()
+            .position(|s| s.name == name)
+            .expect("struct not found") as u32
     }
 
     fn get_field_offset(&self, struct_name: &str, field_name: &str) -> u32 {
-        let structure = self.structs.iter().find(|s| s.name == struct_name).expect("struct not found");
+        let structure = self
+            .structs
+            .iter()
+            .find(|s| s.name == struct_name)
+            .expect("struct not found");
         let mut offset: u32 = 0;
         for (name, ty) in &structure.fields {
             if name == field_name {

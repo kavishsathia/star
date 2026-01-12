@@ -1,6 +1,6 @@
-use crate::ast::{self, Type, TypeKind};
-use crate::tast::{self, TypedStatement, TypedProgram};
 use super::{TypeChecker, TypeError};
+use crate::ast::{self, Type, TypeKind};
+use crate::tast::{self, TypedProgram, TypedStatement};
 
 impl TypeChecker {
     pub fn check_stmt(&mut self, stmt: &ast::Statement) -> Result<TypedStatement, TypeError> {
@@ -12,7 +12,14 @@ impl TypeChecker {
 
             ast::Statement::Let { name, value, ty } => {
                 let typed_value = if let Some(init_expr) = value {
-                    let typed_init = self.check_expr(init_expr)?;
+                    let mut typed_init = self.check_expr(init_expr)?;
+
+                    if let TypeKind::List { element } = &typed_init.ty.kind {
+                        if element.kind == TypeKind::Unknown {
+                            typed_init.ty = ty.clone();
+                        }
+                    }
+
                     if !self.is_assignable(&typed_init.ty, ty) {
                         return Err(TypeError::new(format!(
                             "Incompatible type in let binding for '{}'",
@@ -38,7 +45,14 @@ impl TypeChecker {
             }
 
             ast::Statement::Const { name, value, ty } => {
-                let typed_value = self.check_expr(value)?;
+                let mut typed_value = self.check_expr(value)?;
+
+                if let TypeKind::List { element } = &typed_value.ty.kind {
+                    if element.kind == TypeKind::Unknown {
+                        typed_value.ty = ty.clone();
+                    }
+                }
+
                 if !self.is_assignable(&typed_value.ty, ty) {
                     return Err(TypeError::new(format!(
                         "Incompatible type in const binding for '{}'",
@@ -67,7 +81,9 @@ impl TypeChecker {
                 } else {
                     if let Some(expected_type) = &self.current_return_type {
                         if !expected_type.nullable {
-                            return Err(TypeError::new("Incompatible return type: expected non-void"));
+                            return Err(TypeError::new(
+                                "Incompatible return type: expected non-void",
+                            ));
                         }
                     } else {
                         return Err(TypeError::new("Return statement outside of function"));
@@ -81,10 +97,19 @@ impl TypeChecker {
 
             ast::Statement::Continue => Ok(TypedStatement::Continue),
 
-            ast::Statement::If { condition, then_block, else_block } => {
+            ast::Statement::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
                 let typed_condition = self.check_expr(condition)?;
-                if !self.is_boolean(&typed_condition.ty) || typed_condition.ty.nullable || typed_condition.ty.errorable {
-                    return Err(TypeError::new("If condition must be a non-nullable, non-errorable boolean"));
+                if !self.is_boolean(&typed_condition.ty)
+                    || typed_condition.ty.nullable
+                    || typed_condition.ty.errorable
+                {
+                    return Err(TypeError::new(
+                        "If condition must be a non-nullable, non-errorable boolean",
+                    ));
                 }
 
                 self.push_scope();
@@ -113,13 +138,23 @@ impl TypeChecker {
                 })
             }
 
-            ast::Statement::For { init, condition, update, body } => {
+            ast::Statement::For {
+                init,
+                condition,
+                update,
+                body,
+            } => {
                 self.push_scope();
                 let typed_init = self.check_stmt(init)?;
 
                 let typed_condition = self.check_expr(condition)?;
-                if !self.is_boolean(&typed_condition.ty) || typed_condition.ty.nullable || typed_condition.ty.errorable {
-                    return Err(TypeError::new("For loop condition must be a non-nullable, non-errorable boolean"));
+                if !self.is_boolean(&typed_condition.ty)
+                    || typed_condition.ty.nullable
+                    || typed_condition.ty.errorable
+                {
+                    return Err(TypeError::new(
+                        "For loop condition must be a non-nullable, non-errorable boolean",
+                    ));
                 }
 
                 let typed_body: Vec<TypedStatement> = body
@@ -141,8 +176,13 @@ impl TypeChecker {
 
             ast::Statement::While { condition, body } => {
                 let typed_condition = self.check_expr(condition)?;
-                if !self.is_boolean(&typed_condition.ty) || typed_condition.ty.nullable || typed_condition.ty.errorable {
-                    return Err(TypeError::new("While loop condition must be a non-nullable, non-errorable boolean"));
+                if !self.is_boolean(&typed_condition.ty)
+                    || typed_condition.ty.nullable
+                    || typed_condition.ty.errorable
+                {
+                    return Err(TypeError::new(
+                        "While loop condition must be a non-nullable, non-errorable boolean",
+                    ));
                 }
 
                 self.push_scope();
@@ -158,7 +198,12 @@ impl TypeChecker {
                 })
             }
 
-            ast::Statement::Function { name, params, returns, body } => {
+            ast::Statement::Function {
+                name,
+                params,
+                returns,
+                body,
+            } => {
                 let func_type = Type {
                     kind: TypeKind::Function {
                         params: params.iter().map(|(_, ty)| ty.clone()).collect(),
@@ -194,7 +239,8 @@ impl TypeChecker {
             }
 
             ast::Statement::Struct { name, fields } => {
-                self.structs.insert(name.clone(), (fields.clone(), self.next_struct_index));
+                self.structs
+                    .insert(name.clone(), (fields.clone(), self.next_struct_index));
                 self.next_struct_index += 1;
                 Ok(TypedStatement::Struct {
                     name: name.clone(),
@@ -215,7 +261,9 @@ impl TypeChecker {
             ast::Statement::Print(expr) => {
                 let typed_expr = self.check_expr(expr)?;
                 if typed_expr.ty.nullable || typed_expr.ty.errorable {
-                    return Err(TypeError::new("Cannot print nullable or errorable expression"));
+                    return Err(TypeError::new(
+                        "Cannot print nullable or errorable expression",
+                    ));
                 }
                 Ok(TypedStatement::Print(typed_expr))
             }
@@ -223,7 +271,8 @@ impl TypeChecker {
     }
 
     pub fn check_program(&mut self, program: &ast::Program) -> Result<TypedProgram, TypeError> {
-        let typed_statements: Vec<TypedStatement> = program.statements
+        let typed_statements: Vec<TypedStatement> = program
+            .statements
             .iter()
             .map(|s| self.check_stmt(s))
             .collect::<Result<_, _>>()?;

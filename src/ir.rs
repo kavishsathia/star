@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, UnaryOp, Type};
+use crate::ast::{BinaryOp, Type, UnaryOp};
 
 #[derive(Debug)]
 pub struct IRProgram {
@@ -14,28 +14,62 @@ pub struct IRExpr {
 
 #[derive(Debug, Clone)]
 pub enum IRExprKind {
-    Integer(i64), // ty
-    Float(f64), // ty
-    Boolean(bool), // ty
+    Integer(i64),   // ty
+    Float(f64),     // ty
+    Boolean(bool),  // ty
     String(String), // ty
-    Null, // ty
+    Null,           // ty
 
     Local(u32), // ty
 
-    Binary { left: Box<IRExpr>, op: BinaryOp, right: Box<IRExpr> }, // ty
-    Unary { op: UnaryOp, expr: Box<IRExpr> }, // ty
+    Binary {
+        left: Box<IRExpr>,
+        op: BinaryOp,
+        right: Box<IRExpr>,
+    }, // ty
+    Unary {
+        op: UnaryOp,
+        expr: Box<IRExpr>,
+    }, // ty
 
-    Call { callee: Box<IRExpr>, args: Vec<IRExpr> }, 
+    Call {
+        callee: Box<IRExpr>,
+        args: Vec<IRExpr>,
+    },
 
     List(Vec<IRExpr>),
 
-    New { struct_index: u32, fields: Vec<IRExpr> },
-    Field { object: Box<IRExpr>, offset: u32 },
-    FieldReference { object: Box<IRExpr>, offset: u32 },
-    Index { list: Box<IRExpr>, index: Box<IRExpr> },
-    IndexReference { list: Box<IRExpr>, index: Box<IRExpr> },
+    New {
+        struct_index: u32,
+        fields: Vec<IRExpr>,
+    },
+    Field {
+        object: Box<IRExpr>,
+        offset: u32,
+    },
+    FieldReference {
+        object: Box<IRExpr>,
+        offset: u32,
+    },
+    Index {
+        list: Box<IRExpr>,
+        index: Box<IRExpr>,
+    },
+    IndexReference {
+        list: Box<IRExpr>,
+        index: Box<IRExpr>,
+    },
+    Slice {
+        expr: Box<IRExpr>,
+        start: Box<IRExpr>,
+        end: Box<IRExpr>,
+    },
 
-    Match { expr: Box<IRExpr>, binding: u32, arms: Vec<(IRPattern, Vec<IRStmt>)> },
+    Match {
+        expr: Box<IRExpr>,
+        binding: u32,
+        arms: Vec<(IRPattern, Vec<IRStmt>)>,
+    },
 
     UnwrapError(Box<IRExpr>),
     UnwrapNull(Box<IRExpr>),
@@ -52,16 +86,35 @@ pub enum IRPattern {
 #[derive(Debug, Clone)]
 pub enum IRStmt {
     Expr(IRExpr),
-    LocalSet { index: u32, value: IRExpr },
+    LocalSet {
+        index: u32,
+        value: IRExpr,
+    },
     Return(Option<IRExpr>),
     Break,
     Continue,
-    If { condition: IRExpr, then_block: Vec<IRStmt>, else_block: Option<Vec<IRStmt>> },
-    For { init: Box<IRStmt>, condition: IRExpr, update: Box<IRStmt>, body: Vec<IRStmt> },
-    While { condition: IRExpr, body: Vec<IRStmt> },
+    If {
+        condition: IRExpr,
+        then_block: Vec<IRStmt>,
+        else_block: Option<Vec<IRStmt>>,
+    },
+    For {
+        init: Box<IRStmt>,
+        condition: IRExpr,
+        update: Box<IRStmt>,
+        body: Vec<IRStmt>,
+    },
+    While {
+        condition: IRExpr,
+        body: Vec<IRStmt>,
+    },
     Print(IRExpr),
     Produce(IRExpr),
-    LocalClosure { fn_index: u32, captures: Box<IRExpr>, index: u32 },
+    LocalClosure {
+        fn_index: u32,
+        captures: Box<IRExpr>,
+        index: u32,
+    },
 }
 
 #[derive(Debug)]

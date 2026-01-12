@@ -19,6 +19,14 @@ unsafe fn write_u32(addr: u32, val: u32) {
     *(addr as *mut u32) = val;
 }
 
+unsafe fn read_u64(addr: u32) -> u64 {
+    *(addr as *const u64)
+}
+
+unsafe fn write_u64(addr: u32, val: u64) {
+    *(addr as *mut u64) = val;
+}
+
 #[no_mangle]
 pub extern "C" fn dinit() {
     unsafe {
@@ -73,4 +81,52 @@ pub extern "C" fn dalloc(ty: u32, length: u32) -> u32 {
     }
 
     0
+}
+
+#[no_mangle]
+pub extern "C" fn dconcat(first: u32, second: u32) -> u32 {
+    unsafe {
+        let ty = read_u32(first - 16);
+        let first_len = read_u32(first - 4);
+        let second_len = read_u32(second - 4);
+
+        let new_len = first_len + second_len;
+
+        let new_addr = dalloc(ty, new_len);
+        if new_addr == 0 {
+            return 0;
+        }
+
+        for i in 0..first_len {
+            let val = read_u64(first + (i * 8));
+            write_u64(new_addr + (i * 8), val);
+        }
+
+        for i in 0..second_len {
+            let val = read_u64(second + (i * 8));
+            write_u64(new_addr + ((first_len + i) * 8), val);
+        }
+
+        new_addr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn dslice(ptr: u32, start: u32, end: u32) -> u32 {
+    unsafe {
+        let ty = read_u32(ptr - 16);
+        let new_len = end - start;
+
+        let new_addr = dalloc(ty, new_len);
+        if new_addr == 0 {
+            return 0;
+        }
+
+        for i in 0..new_len {
+            let val = read_u64(ptr + ((start + i) * 8));
+            write_u64(new_addr + (i * 8), val);
+        }
+
+        new_addr
+    }
 }

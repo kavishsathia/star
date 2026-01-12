@@ -195,6 +195,18 @@ impl Wrapper {
                     key: Box::new(self.wrap_expr(*key)),
                 },
             },
+            Expr::Slice {
+                expr: inner,
+                start,
+                end,
+            } => AnalyzedExpr {
+                ty: expr.ty.clone(),
+                expr: Expr::Slice {
+                    expr: Box::new(self.wrap_expr(*inner)),
+                    start: Box::new(self.wrap_expr(*start)),
+                    end: Box::new(self.wrap_expr(*end)),
+                },
+            },
             Expr::List(elements) => AnalyzedExpr {
                 ty: expr.ty.clone(),
                 expr: Expr::List(elements.into_iter().map(|e| self.wrap_expr(e)).collect()),

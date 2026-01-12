@@ -1,8 +1,8 @@
 mod expr;
 mod stmt;
 
-use std::collections::{HashMap, HashSet};
 use crate::ast::{Type, TypeKind};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 pub struct TypeError {
@@ -11,7 +11,9 @@ pub struct TypeError {
 
 impl TypeError {
     pub fn new(message: impl Into<String>) -> Self {
-        TypeError { message: message.into() }
+        TypeError {
+            message: message.into(),
+        }
     }
 }
 
@@ -19,7 +21,7 @@ pub struct TypeChecker {
     scopes: Vec<HashMap<String, Type>>,
     pub structs: HashMap<String, (Vec<(String, Type)>, i32)>,
     pub errors: HashSet<String>,
-    pub next_struct_index : i32,
+    pub next_struct_index: i32,
     pub current_return_type: Option<Type>,
 }
 
@@ -33,7 +35,6 @@ impl TypeChecker {
             next_struct_index: 0,
         }
     }
-
 
     pub fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
@@ -57,7 +58,6 @@ impl TypeChecker {
         }
         None
     }
-
 
     pub fn types_equal(&self, a: &Type, b: &Type) -> bool {
         return a == b;

@@ -1,7 +1,7 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use crate::tast::{self, TypedExpr, TypedProgram, TypedStatement};
 use crate::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
 use crate::ast::{Type, TypeKind};
+use crate::tast::{self, TypedExpr, TypedProgram, TypedStatement};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub struct LocalsIndexer {
     scopes: Vec<Vec<HashMap<String, (u32, Rc<RefCell<Option<String>>>)>>>,
@@ -9,6 +9,7 @@ pub struct LocalsIndexer {
     pub fn_count: u32,
     free_var_count: u32,
     fn_names: Vec<String>,
+    current_param_count: u32,
 }
 
 enum VariableKind {
@@ -24,18 +25,20 @@ impl LocalsIndexer {
             fn_count: 1,
             free_var_count: 0,
             fn_names: vec![],
+            current_param_count: 0,
         }
     }
 
     pub fn push_fn(&mut self, name: String) {
         self.scopes.push(vec![HashMap::new()]);
         self.locals_types_stack.push(vec![]);
-        self.fn_names.push(name);   
+        self.fn_names.push(name);
     }
 
     pub fn pop_fn(&mut self) -> Vec<Type> {
         self.scopes.pop();
         self.fn_names.pop();
+        self.current_param_count = 0;
         self.locals_types_stack.pop().unwrap_or_default()
     }
 
@@ -51,12 +54,42 @@ impl LocalsIndexer {
         }
     }
 
-    pub fn define(&mut self, name: String, typ: Type, captured: Rc<RefCell<Option<String>>>) -> u32 {
+    pub fn define_param(
+        &mut self,
+        name: String,
+        param_index: u32,
+        captured: Rc<RefCell<Option<String>>>,
+    ) -> u32 {
+        if let Some(scopes) = self.scopes.last_mut() {
+            if let Some(current_scope) = scopes.last_mut() {
+                let index = param_index + 3; // first three reserved for 2 tmp vars and capture pointer
+
+                println!("Defining param '{}' at index {}", name, index);
+                if current_scope.contains_key(&name) {
+                    panic!("Parameter '{}' already defined in this scope", name);
+                }
+
+                current_scope.insert(name, (index, captured));
+                // Don't push to locals_types_stack - params are already in WASM signature
+                return index;
+            }
+        }
+        panic!("No function scope available to define parameter");
+    }
+
+    pub fn define(
+        &mut self,
+        name: String,
+        typ: Type,
+        captured: Rc<RefCell<Option<String>>>,
+    ) -> u32 {
         if let Some(scopes) = self.scopes.last_mut() {
             if let Some(current_scope) = scopes.last_mut() {
                 let locals = self.locals_types_stack.last_mut().unwrap();
-                let index = locals.len() as u32 + 3; // first three reserved for 2 tmp vars and capture pointer
+                let num_params = self.current_param_count;
+                let index = locals.len() as u32 + 3 + num_params; // offset by params
 
+                println!("Defining local variable '{}' at index {}", name, index);
                 if current_scope.contains_key(&name) {
                     panic!("Local variable '{}' already defined in this scope", name);
                 }
@@ -121,23 +154,34 @@ impl LocalsIndexer {
                     index: Some(index),
                 }
             }
-            TypedStatement::Function { name, params, returns, body } => {
+            TypedStatement::Function {
+                name,
+                params,
+                returns,
+                body,
+            } => {
                 let captured = Rc::new(RefCell::new(None));
-                let index = self.define(name.clone(), Type {
-                    kind: TypeKind::Function {
-                        params: params.iter().map(|(_, ty)| ty.clone()).collect(),
-                        returns: Box::new(returns.clone()),
+                let index = self.define(
+                    name.clone(),
+                    Type {
+                        kind: TypeKind::Function {
+                            params: params.iter().map(|(_, ty)| ty.clone()).collect(),
+                            returns: Box::new(returns.clone()),
+                        },
+                        nullable: false,
+                        errorable: false,
                     },
-                    nullable: false,
-                    errorable: false,
-                }, Rc::clone(&captured));
+                    Rc::clone(&captured),
+                );
 
                 self.push_fn(name.clone());
+                self.current_param_count = params.len() as u32;
 
                 let mut analyzed_params = vec![];
-                for (param_name, param_type) in params {
+                for (i, (param_name, param_type)) in params.iter().enumerate() {
                     let captured = Rc::new(RefCell::new(None));
-                    let index = self.define(param_name.clone(), param_type.clone(), Rc::clone(&captured));
+                    let index =
+                        self.define_param(param_name.clone(), i as u32, Rc::clone(&captured));
                     analyzed_params.push((param_name.clone(), param_type.clone(), index, captured));
                 }
 
@@ -147,7 +191,7 @@ impl LocalsIndexer {
                 }
 
                 let locals = self.pop_fn();
-                
+
                 let mut fn_index = self.fn_count;
                 if name == "main" {
                     fn_index = 0;
@@ -165,10 +209,15 @@ impl LocalsIndexer {
                     locals,
                 }
             }
-            TypedStatement::If { condition, then_block, else_block } => {
+            TypedStatement::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
                 let analyzed_condition = self.analyze_expr(condition);
                 self.push_scope();
-                let analyzed_then: Vec<_> = then_block.iter().map(|s| self.analyze_stmt(s)).collect();
+                let analyzed_then: Vec<_> =
+                    then_block.iter().map(|s| self.analyze_stmt(s)).collect();
                 self.pop_scope();
                 let analyzed_else = else_block.as_ref().map(|stmts| {
                     self.push_scope();
@@ -192,7 +241,12 @@ impl LocalsIndexer {
                     body: analyzed_body,
                 }
             }
-            TypedStatement::For { init, condition, update, body } => {
+            TypedStatement::For {
+                init,
+                condition,
+                update,
+                body,
+            } => {
                 self.push_scope();
                 let analyzed_init = Box::new(self.analyze_stmt(init));
                 let analyzed_condition = self.analyze_expr(condition);
@@ -206,112 +260,102 @@ impl LocalsIndexer {
                     body: analyzed_body,
                 }
             }
-            TypedStatement::Expr(expr) => {
-                AnalyzedStatement::Expr(self.analyze_expr(expr))
-            }
+            TypedStatement::Expr(expr) => AnalyzedStatement::Expr(self.analyze_expr(expr)),
             TypedStatement::Return(expr) => {
                 AnalyzedStatement::Return(expr.as_ref().map(|e| self.analyze_expr(e)))
             }
-            TypedStatement::Print(expr) => {
-                AnalyzedStatement::Print(self.analyze_expr(expr))
-            }
-            TypedStatement::Produce(expr) => {
-                AnalyzedStatement::Produce(self.analyze_expr(expr))
-            }
+            TypedStatement::Print(expr) => AnalyzedStatement::Print(self.analyze_expr(expr)),
+            TypedStatement::Produce(expr) => AnalyzedStatement::Produce(self.analyze_expr(expr)),
             TypedStatement::Break => AnalyzedStatement::Break,
             TypedStatement::Continue => AnalyzedStatement::Continue,
-            TypedStatement::Struct { name, fields } => {
-                AnalyzedStatement::Struct {
-                    name: name.clone(),
-                    fields: fields.clone(),
-                }
-            }
-            TypedStatement::Error { name } => {
-                AnalyzedStatement::Error { name: name.clone() }
-            }
+            TypedStatement::Struct { name, fields } => AnalyzedStatement::Struct {
+                name: name.clone(),
+                fields: fields.clone(),
+            },
+            TypedStatement::Error { name } => AnalyzedStatement::Error { name: name.clone() },
         }
     }
 
     fn analyze_expr(&mut self, expr: &TypedExpr) -> AnalyzedExpr {
         let analyzed = match &expr.expr {
-            tast::Expr::Identifier(name) => {
-                match self.lookup(name) {
-                    VariableKind::Local(index) => aast::Expr::Identifier {
-                        name: name.clone(),
-                        index: Some(index),
-                    },
-                    VariableKind::Captured(field) => aast::Expr::Field {
-                        object: Box::new(AnalyzedExpr{
-                            expr: aast::Expr::Identifier {
+            tast::Expr::Identifier(name) => match self.lookup(name) {
+                VariableKind::Local(index) => aast::Expr::Identifier {
+                    name: name.clone(),
+                    index: Some(index),
+                },
+                VariableKind::Captured(field) => aast::Expr::Field {
+                    object: Box::new(AnalyzedExpr {
+                        expr: aast::Expr::Identifier {
                             name: "captured".to_string(),
                             index: Some(2),
-                        }, ty: Type {
-                            kind: TypeKind::Struct { name: self.fn_names[self.fn_names.len() - 2].to_string() },
+                        },
+                        ty: Type {
+                            kind: TypeKind::Struct {
+                                name: self.fn_names[self.fn_names.len() - 2].to_string(),
+                            },
                             nullable: false,
                             errorable: false,
-                        }}),
-                        field,
-                    },
-                }
-            }
-            tast::Expr::Binary { left, op, right } => {
-                aast::Expr::Binary {
-                    left: Box::new(self.analyze_expr(left)),
-                    op: op.clone(),
-                    right: Box::new(self.analyze_expr(right)),
-                }
-            }
-            tast::Expr::Unary { op, expr } => {
-                aast::Expr::Unary {
-                    op: op.clone(),
-                    expr: Box::new(self.analyze_expr(expr)),
-                }
-            }
-            tast::Expr::Call { callee, args } => {
-                aast::Expr::Call {
-                    callee: Box::new(self.analyze_expr(callee)),
-                    args: args.iter().map(|a| self.analyze_expr(a)).collect(),
-                }
-            }
+                        },
+                    }),
+                    field,
+                },
+            },
+            tast::Expr::Binary { left, op, right } => aast::Expr::Binary {
+                left: Box::new(self.analyze_expr(left)),
+                op: op.clone(),
+                right: Box::new(self.analyze_expr(right)),
+            },
+            tast::Expr::Unary { op, expr } => aast::Expr::Unary {
+                op: op.clone(),
+                expr: Box::new(self.analyze_expr(expr)),
+            },
+            tast::Expr::Call { callee, args } => aast::Expr::Call {
+                callee: Box::new(self.analyze_expr(callee)),
+                args: args.iter().map(|a| self.analyze_expr(a)).collect(),
+            },
             tast::Expr::List(items) => {
                 aast::Expr::List(items.iter().map(|i| self.analyze_expr(i)).collect())
             }
-            tast::Expr::Field { object, field } => {
-                aast::Expr::Field {
-                    object: Box::new(self.analyze_expr(object)),
-                    field: field.clone(),
-                }
-            }
-            tast::Expr::Index { object, key } => {
-                aast::Expr::Index {
-                    object: Box::new(self.analyze_expr(object)),
-                    key: Box::new(self.analyze_expr(key)),
-                }
-            }
-            tast::Expr::New { name, fields } => {
-                aast::Expr::New {
-                    name: name.clone(),
-                    fields: fields.iter().map(|(n, e)| (n.clone(), self.analyze_expr(e))).collect(),
-                }
-            }
-            tast::Expr::Match { expr, binding, arms } => {
-                aast::Expr::Match {
-                    expr: Box::new(self.analyze_expr(expr)),
-                    binding: binding.clone(),
-                    arms: arms.iter().map(|(pattern, stmts)| {
+            tast::Expr::Field { object, field } => aast::Expr::Field {
+                object: Box::new(self.analyze_expr(object)),
+                field: field.clone(),
+            },
+            tast::Expr::Index { object, key } => aast::Expr::Index {
+                object: Box::new(self.analyze_expr(object)),
+                key: Box::new(self.analyze_expr(key)),
+            },
+            tast::Expr::Slice { expr, start, end } => aast::Expr::Slice {
+                expr: Box::new(self.analyze_expr(expr)),
+                start: Box::new(self.analyze_expr(start)),
+                end: Box::new(self.analyze_expr(end)),
+            },
+            tast::Expr::New { name, fields } => aast::Expr::New {
+                name: name.clone(),
+                fields: fields
+                    .iter()
+                    .map(|(n, e)| (n.clone(), self.analyze_expr(e)))
+                    .collect(),
+            },
+            tast::Expr::Match {
+                expr,
+                binding,
+                arms,
+            } => aast::Expr::Match {
+                expr: Box::new(self.analyze_expr(expr)),
+                binding: binding.clone(),
+                arms: arms
+                    .iter()
+                    .map(|(pattern, stmts)| {
                         self.push_scope();
-                        let analyzed_stmts: Vec<_> = stmts.iter().map(|s| self.analyze_stmt(s)).collect();
+                        let analyzed_stmts: Vec<_> =
+                            stmts.iter().map(|s| self.analyze_stmt(s)).collect();
                         self.pop_scope();
                         (pattern.clone(), analyzed_stmts)
-                    }).collect(),
-                }
-            }
-            tast::Expr::UnwrapError(e) => {
-                aast::Expr::UnwrapError(Box::new(self.analyze_expr(e)))
-            }
-            tast::Expr::UnwrapNull(e) => {
-                aast::Expr::UnwrapNull(Box::new(self.analyze_expr(e)))
-            }
+                    })
+                    .collect(),
+            },
+            tast::Expr::UnwrapError(e) => aast::Expr::UnwrapError(Box::new(self.analyze_expr(e))),
+            tast::Expr::UnwrapNull(e) => aast::Expr::UnwrapNull(Box::new(self.analyze_expr(e))),
             tast::Expr::Null => aast::Expr::Null,
             tast::Expr::Integer(n) => aast::Expr::Integer(*n),
             tast::Expr::Float(n) => aast::Expr::Float(*n),
@@ -326,9 +370,10 @@ impl LocalsIndexer {
 
     pub fn analyze_program(&mut self, program: &TypedProgram) -> AnalyzedProgram {
         let mut statements: Vec<_> = program.statements.iter().collect();
-        if let Some(main_idx) = statements.iter().position(|s| {
-            matches!(s, TypedStatement::Function { name, .. } if name == "main")
-        }) {
+        if let Some(main_idx) = statements
+            .iter()
+            .position(|s| matches!(s, TypedStatement::Function { name, .. } if name == "main"))
+        {
             let main_fn = statements.remove(main_idx);
             statements.insert(0, main_fn);
         }
@@ -336,6 +381,8 @@ impl LocalsIndexer {
         self.push_fn("root".to_string());
         let analyzed: Vec<_> = statements.iter().map(|s| self.analyze_stmt(s)).collect();
         self.pop_fn();
-        AnalyzedProgram { statements: analyzed }
+        AnalyzedProgram {
+            statements: analyzed,
+        }
     }
 }

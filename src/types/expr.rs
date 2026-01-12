@@ -160,6 +160,45 @@ impl TypeChecker {
                 }
             }
 
+            ast::Expr::Slice { expr, start, end } => {
+                let typed_expr = self.check_expr(expr)?;
+                let typed_start = self.check_expr(start)?;
+                let typed_end = self.check_expr(end)?;
+
+                if let TypeKind::List { element } = &typed_expr.ty.kind {
+                    if typed_expr.ty.nullable || typed_expr.ty.errorable {
+                        return Err(TypeError::new("Slice access on nullable or errorable type"));
+                    }
+                    if typed_start.ty.kind == TypeKind::Integer
+                        && !typed_start.ty.nullable
+                        && !typed_start.ty.errorable
+                        && typed_end.ty.kind == TypeKind::Integer
+                        && !typed_end.ty.nullable
+                        && !typed_end.ty.errorable
+                    {
+                        let elem_type = element.as_ref().clone();
+                        Ok(TypedExpr {
+                            expr: tast::Expr::Slice {
+                                expr: Box::new(typed_expr),
+                                start: Box::new(typed_start),
+                                end: Box::new(typed_end),
+                            },
+                            ty: Type {
+                                kind: TypeKind::List {
+                                    element: Box::new(elem_type),
+                                },
+                                nullable: false,
+                                errorable: false,
+                            },
+                        })
+                    } else {
+                        Err(TypeError::new("Slice indices must be of type integer"))
+                    }
+                } else {
+                    Err(TypeError::new("Slice access on non-list type"))
+                }
+            }
+
             ast::Expr::New { name, fields } => {
                 let struct_fields = self
                     .structs
@@ -335,7 +374,11 @@ impl TypeChecker {
         match op {
             ast::BinaryOp::Plus => {
                 if left_ty.kind == TypeKind::String && right_ty.kind == TypeKind::String {
-                    if left_ty.nullable || left_ty.errorable || right_ty.nullable || right_ty.errorable {
+                    if left_ty.nullable
+                        || left_ty.errorable
+                        || right_ty.nullable
+                        || right_ty.errorable
+                    {
                         return Err(TypeError::new(
                             "String operands must be non-nullable and non-errorable",
                         ));
@@ -346,19 +389,31 @@ impl TypeChecker {
                         errorable: false,
                     });
                 }
-                if let (TypeKind::List { element: left_elem }, TypeKind::List { element: right_elem }) = (&left_ty.kind, &right_ty.kind) {
+                if let (
+                    TypeKind::List { element: left_elem },
+                    TypeKind::List {
+                        element: right_elem,
+                    },
+                ) = (&left_ty.kind, &right_ty.kind)
+                {
                     if left_elem != right_elem {
                         return Err(TypeError::new(
                             "List element types must match for concatenation",
                         ));
                     }
-                    if left_ty.nullable || left_ty.errorable || right_ty.nullable || right_ty.errorable {
+                    if left_ty.nullable
+                        || left_ty.errorable
+                        || right_ty.nullable
+                        || right_ty.errorable
+                    {
                         return Err(TypeError::new(
                             "List operands must be non-nullable and non-errorable",
                         ));
                     }
                     return Ok(Type {
-                        kind: TypeKind::List { element: left_elem.clone() },
+                        kind: TypeKind::List {
+                            element: left_elem.clone(),
+                        },
                         nullable: false,
                         errorable: false,
                     });
