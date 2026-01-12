@@ -117,7 +117,7 @@ pub enum IRStmt {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IRFunction {
     pub name: String,
     pub params: Vec<Type>,

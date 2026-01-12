@@ -24,14 +24,25 @@ use wrap::Wrapper;
 fn main() {
     let source = r#"
         fn main(): integer {
-            let arr: {integer} = {5, 3, 4, 2, 1};
+            fn slice(): {(:integer)} {
+                let arr: {(:integer)} = {};
 
-            let subarr: {integer} = arr[1:4];
-
-            for let i: integer = 0; i < #subarr; i = i + 1; {
-                print subarr[i];
+                for let i: integer = 0; i < 10; i = i + 1; {
+                    fn ret(): integer {
+                        return i;
+                    }
+                    arr = arr + {ret};
+                }
+                return arr;
             }
 
+            let s: {(:integer)} = slice();
+
+            for let i: integer = 0; i < #s; i = i + 1; {
+                let val: integer = s[i]();
+                print val;
+            }
+            
             return 0;
         }
     "#;

@@ -6,7 +6,9 @@ use wasm_encoder::{
     TypeSection, ValType,
 };
 
-pub struct Codegen {}
+pub struct Codegen {
+    functions: Vec<IRFunction>,
+}
 
 impl Codegen {
     fn type_to_valtype(ty: &Type) -> ValType {
@@ -24,12 +26,24 @@ impl Codegen {
 
 impl Codegen {
     pub fn new() -> Self {
-        Codegen {}
+        Codegen { functions: vec![] }
+    }
+
+    fn find_type_index(&self, callee_ty: &Type) -> u32 {
+        if let TypeKind::Function { params, returns } = &callee_ty.kind {
+            for (i, func) in self.functions.iter().enumerate() {
+                if func.params == *params && func.returns == **returns {
+                    return Self::IMPORT_COUNT + i as u32;
+                }
+            }
+        }
+        panic!("Could not find matching function type for call_indirect")
     }
 
     const IMPORT_COUNT: u32 = 8;
 
     pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
+        self.functions = program.functions.clone();
         let mut module = Module::new();
 
         let mut types = TypeSection::new();
@@ -306,6 +320,7 @@ impl Codegen {
                 }
             },
             IRExprKind::Call { callee, args } => {
+                let type_index = self.find_type_index(&callee.ty);
                 f.instruction(&Instruction::I32Const(0));
                 f.instruction(&Instruction::I64Const(0));
                 self.compile_expr(callee, f, false);
@@ -322,7 +337,7 @@ impl Codegen {
                 f.instruction(&Instruction::LocalGet(0));
 
                 f.instruction(&Instruction::CallIndirect {
-                    type_index: 9,
+                    type_index,
                     table_index: 0,
                 });
             }
