@@ -2,9 +2,9 @@ mod expr;
 mod stmt;
 mod types;
 
-use logos::Logos;
-use crate::lexer::Token;
 use crate::ast::{BinaryOp, Expr, Program, Statement, Type, TypeKind, UnaryOp};
+use crate::lexer::Token;
+use logos::Logos;
 
 pub struct Parser<'a> {
     lexer: logos::Lexer<'a, Token>,
@@ -41,7 +41,9 @@ impl<'a> Parser<'a> {
     }
 
     pub fn check(&self, expected: &Token) -> bool {
-        self.peek().map(|t| std::mem::discriminant(t) == std::mem::discriminant(expected)).unwrap_or(false)
+        self.peek()
+            .map(|t| std::mem::discriminant(t) == std::mem::discriminant(expected))
+            .unwrap_or(false)
     }
 
     pub fn match_token(&mut self, expected: &Token) -> bool {
@@ -57,11 +59,7 @@ impl<'a> Parser<'a> {
         if self.check(expected) {
             self.advance().unwrap()
         } else {
-            panic!(
-                "Expected {:?}, found {:?}",
-                expected,
-                self.peek()
-            );
+            panic!("Expected {:?}, found {:?}", expected, self.peek());
         }
     }
 
@@ -74,9 +72,7 @@ impl<'a> Parser<'a> {
         while !self.at_end() {
             stmts.push(self.parse_statement(true));
         }
-        Program {
-            statements: stmts,
-        }
+        Program { statements: stmts }
     }
 
     pub fn infix_binding_power(op: &Token) -> Option<(u8, u8)> {
@@ -105,11 +101,10 @@ impl<'a> Parser<'a> {
 
     pub fn prefix_binding_power(op: &Token) -> Option<u8> {
         match op {
-            Token::Minus | Token::Not | Token::Raise => Some(23),
+            Token::Minus | Token::Not | Token::Raise | Token::Count => Some(23),
             _ => None,
         }
     }
-
 
     fn token_to_binary_op(token: &Token) -> BinaryOp {
         match token {

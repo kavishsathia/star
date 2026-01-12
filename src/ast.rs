@@ -31,6 +31,7 @@ pub enum UnaryOp {
     Not,
     Minus,
     Raise,
+    Count,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,10 +47,19 @@ pub enum TypeKind {
     Float,
     Boolean,
     String,
-    Struct { name: String },
-    Error { name: String },
-    List { element: Box<Type> },
-    Function { params: Vec<Type>, returns: Box<Type> },
+    Struct {
+        name: String,
+    },
+    Error {
+        name: String,
+    },
+    List {
+        element: Box<Type>,
+    },
+    Function {
+        params: Vec<Type>,
+        returns: Box<Type>,
+    },
     Null,
     Unknown,
 }
@@ -63,13 +73,36 @@ pub enum Expr {
     Boolean(bool),
     Identifier(String),
     List(Vec<Expr>),
-    Field { object: Box<Expr>, field: String },
-    Index { object: Box<Expr>, key: Box<Expr> },
-    New { name: String, fields: Vec<(String, Expr)> },
-    Binary { left: Box<Expr>, op:   BinaryOp, right: Box<Expr> },
-    Unary { op: UnaryOp, expr: Box<Expr> },
-    Call { callee: Box<Expr>, args: Vec<Expr> },
-    Match { expr: Box<Expr>, binding: String, arms: Vec<(Pattern, Vec<Statement>)> },
+    Field {
+        object: Box<Expr>,
+        field: String,
+    },
+    Index {
+        object: Box<Expr>,
+        key: Box<Expr>,
+    },
+    New {
+        name: String,
+        fields: Vec<(String, Expr)>,
+    },
+    Binary {
+        left: Box<Expr>,
+        op: BinaryOp,
+        right: Box<Expr>,
+    },
+    Unary {
+        op: UnaryOp,
+        expr: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+    },
+    Match {
+        expr: Box<Expr>,
+        binding: String,
+        arms: Vec<(Pattern, Vec<Statement>)>,
+    },
     UnwrapError(Box<Expr>),
     UnwrapNull(Box<Expr>),
 }
@@ -79,23 +112,53 @@ pub enum Pattern {
     MatchNull,
     MatchError,
     MatchAll,
-    MatchType(Type)
+    MatchType(Type),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Expr(Expr),
-    Let { name: String, ty: Type, value: Option<Expr> },
-    Const { name: String, ty: Type, value: Expr },
+    Let {
+        name: String,
+        ty: Type,
+        value: Option<Expr>,
+    },
+    Const {
+        name: String,
+        ty: Type,
+        value: Expr,
+    },
     Return(Option<Expr>),
     Break,
     Continue,
-    If { condition: Expr, then_block: Vec<Statement>, else_block: Option<Vec<Statement>> },
-    For { init: Box<Statement>, condition: Expr, update: Box<Statement>, body: Vec<Statement> },
-    While { condition: Expr, body: Vec<Statement> },
-    Function { name: String, params: Vec<(String, Type)>, returns: Type, body: Vec<Statement> },
-    Struct { name: String, fields: Vec<(String, Type)> },
-    Error { name: String },
+    If {
+        condition: Expr,
+        then_block: Vec<Statement>,
+        else_block: Option<Vec<Statement>>,
+    },
+    For {
+        init: Box<Statement>,
+        condition: Expr,
+        update: Box<Statement>,
+        body: Vec<Statement>,
+    },
+    While {
+        condition: Expr,
+        body: Vec<Statement>,
+    },
+    Function {
+        name: String,
+        params: Vec<(String, Type)>,
+        returns: Type,
+        body: Vec<Statement>,
+    },
+    Struct {
+        name: String,
+        fields: Vec<(String, Type)>,
+    },
+    Error {
+        name: String,
+    },
     Print(Expr),
     Produce(Expr),
 }

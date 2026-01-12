@@ -182,7 +182,7 @@ impl Codegen {
                 if let IRExprKind::Local(index) = &left.node {
                     self.compile_expr(right, f, false);
                     f.instruction(&Instruction::LocalTee(*index));
-                } else {
+                } else if let IRExprKind::FieldReference { object, offset } = &left.node {
                     self.compile_expr(left, f, false);
                     f.instruction(&Instruction::LocalTee(0));
                     self.compile_expr(right, f, false);
@@ -190,6 +190,16 @@ impl Codegen {
                         offset: 0,
                         align: 3,
                         memory_index: 0,
+                    }));
+                    f.instruction(&Instruction::LocalGet(0));
+                } else {
+                    self.compile_expr(left, f, false);
+                    f.instruction(&Instruction::LocalTee(0));
+                    self.compile_expr(right, f, false);
+                    f.instruction(&Instruction::I64Store(MemArg {
+                        offset: 0,
+                        align: 3,
+                        memory_index: 1,
                     }));
                     f.instruction(&Instruction::LocalGet(0));
                 }
@@ -263,6 +273,17 @@ impl Codegen {
                     f.instruction(&Instruction::I32Eqz);
                 }
                 UnaryOp::Raise => {}
+                UnaryOp::Count => {
+                    self.compile_expr(expr, f, false);
+                    f.instruction(&Instruction::I32Const(4));
+                    f.instruction(&Instruction::I32Sub);
+                    f.instruction(&Instruction::I32Load(MemArg {
+                        offset: 0,
+                        align: 2,
+                        memory_index: 1,
+                    }));
+                    f.instruction(&Instruction::I64ExtendI32U);
+                }
             },
             IRExprKind::Call { callee, args } => {
                 f.instruction(&Instruction::I32Const(0));
@@ -351,7 +372,7 @@ impl Codegen {
 
             IRExprKind::List(elements) => {
                 f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::I32Const((elements.len() * 8) as i32));
+                f.instruction(&Instruction::I32Const(elements.len() as i32));
                 f.instruction(&Instruction::Call(5));
                 f.instruction(&Instruction::LocalTee(0));
                 for (_, _) in elements.iter().enumerate() {
@@ -362,7 +383,7 @@ impl Codegen {
                     f.instruction(&Instruction::I64Store(MemArg {
                         offset: (i * 8) as u64,
                         align: 3,
-                        memory_index: 0,
+                        memory_index: 1,
                     }));
                 }
             }
@@ -379,7 +400,7 @@ impl Codegen {
                 f.instruction(&Instruction::I64Load(MemArg {
                     offset: 0,
                     align: 3,
-                    memory_index: 0,
+                    memory_index: 1,
                 }));
             }
             IRExprKind::Match { .. } => todo!(),

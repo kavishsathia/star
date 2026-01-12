@@ -43,12 +43,15 @@ pub enum Token {
     #[token("continue")]
     Continue,
 
+    #[token("#")]
+    Count,
+
     #[token("??")]
     NotNull,
 
     #[token("!!")]
     NotError,
-    
+
     #[token("==")]
     Eq,
 
@@ -93,7 +96,7 @@ pub enum Token {
 
     #[token("not")]
     Not,
-    
+
     #[token("&")]
     BitwiseAnd,
 
@@ -153,10 +156,10 @@ pub enum Token {
 
     #[token("null")]
     Null,
-    
+
     #[token("struct")]
     Struct,
-    
+
     #[token("error")]
     Error,
 

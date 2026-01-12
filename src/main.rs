@@ -24,11 +24,19 @@ use wrap::Wrapper;
 fn main() {
     let source = r#"
         fn main(): integer {
-            let i: integer? = 2;
-
-            print i??;
-
-
+            let arr: {integer} = {4,5,3,2,1};
+            for let i: integer = 0; i < #arr; i = i + 1; {
+                for let j: integer = 0; j < #arr - i - 1; j = j + 1; {
+                    if arr[j] > arr[j + 1] {
+                        let temp: integer = arr[j];
+                        arr[j] = arr[j + 1];
+                        arr[j + 1] = temp;
+                    }
+                }
+            }
+            for let k: integer = 0; k < 5; k = k + 1; {
+                print arr[k];
+            }
             return 0;
         }
     "#;

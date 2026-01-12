@@ -1,6 +1,6 @@
-use crate::lexer::Token;
-use crate::ast::{Expr, Pattern, UnaryOp};
 use super::Parser;
+use crate::ast::{Expr, Pattern, UnaryOp};
+use crate::lexer::Token;
 
 impl<'a> Parser<'a> {
     pub fn parse_expression(&mut self, min_bp: u8) -> Expr {
@@ -43,14 +43,27 @@ impl<'a> Parser<'a> {
                 self.expect(&Token::RParenthesis);
                 expr
             }
-            Some(Token::Not) | Some(Token::Minus) | Some(Token::Raise) => {
+            Some(Token::Not) | Some(Token::Minus) | Some(Token::Raise) | Some(Token::Count) => {
                 let op = self.advance().unwrap();
                 let rbp = Parser::prefix_binding_power(&op).unwrap();
                 let expr = self.parse_expression(rbp);
                 match op {
-                    Token::Minus => Expr::Unary { op: UnaryOp::Minus, expr: Box::new(expr) },
-                    Token::Not => Expr::Unary { op: UnaryOp::Not, expr: Box::new(expr) },
-                    Token::Raise => Expr::Unary { op: UnaryOp::Raise, expr: Box::new(expr) },
+                    Token::Minus => Expr::Unary {
+                        op: UnaryOp::Minus,
+                        expr: Box::new(expr),
+                    },
+                    Token::Not => Expr::Unary {
+                        op: UnaryOp::Not,
+                        expr: Box::new(expr),
+                    },
+                    Token::Raise => Expr::Unary {
+                        op: UnaryOp::Raise,
+                        expr: Box::new(expr),
+                    },
+                    Token::Count => Expr::Unary {
+                        op: UnaryOp::Count,
+                        expr: Box::new(expr),
+                    },
                     _ => unreachable!(),
                 }
             }
@@ -90,7 +103,10 @@ impl<'a> Parser<'a> {
                         self.advance();
                         field_name
                     } else {
-                        panic!("Expected field name in struct init, found {:?}", self.peek());
+                        panic!(
+                            "Expected field name in struct init, found {:?}",
+                            self.peek()
+                        );
                     };
                     self.expect(&Token::Colon);
                     let value = self.parse_expression(0);
@@ -138,7 +154,11 @@ impl<'a> Parser<'a> {
                     arms.push((pattern, body));
                 }
                 self.expect(&Token::RBrace);
-                Expr::Match { expr, binding, arms }
+                Expr::Match {
+                    expr,
+                    binding,
+                    arms,
+                }
             }
             _ => panic!("Unexpected token: {:?}", self.peek()),
         };
@@ -157,7 +177,11 @@ impl<'a> Parser<'a> {
                 let infix = Parser::token_to_binary_op(op);
                 self.advance();
                 let right = self.parse_expression(r_bp);
-                left = Expr::Binary { left: Box::new(left), op: infix, right: Box::new(right) }
+                left = Expr::Binary {
+                    left: Box::new(left),
+                    op: infix,
+                    right: Box::new(right),
+                }
             } else if *op == Token::LParenthesis {
                 self.advance();
                 let mut args: Vec<Expr> = Vec::new();
@@ -168,7 +192,10 @@ impl<'a> Parser<'a> {
                     }
                 }
                 self.advance();
-                left = Expr::Call { callee: Box::new(left), args };
+                left = Expr::Call {
+                    callee: Box::new(left),
+                    args,
+                };
             } else if *op == Token::Access {
                 self.advance();
                 let field = if let Some(Token::Identifier) = self.peek() {
@@ -178,12 +205,18 @@ impl<'a> Parser<'a> {
                 } else {
                     panic!("Expected identifier after '.', found {:?}", self.peek());
                 };
-                left = Expr::Field { object: Box::new(left), field };
+                left = Expr::Field {
+                    object: Box::new(left),
+                    field,
+                };
             } else if *op == Token::LBracket {
                 self.advance();
                 let expr = self.parse_expression(0);
                 self.expect(&Token::RBracket);
-                left = Expr::Index { object: Box::new(left), key: Box::new(expr) };
+                left = Expr::Index {
+                    object: Box::new(left),
+                    key: Box::new(expr),
+                };
             } else if *op == Token::NotNull {
                 self.advance();
                 left = Expr::UnwrapNull(Box::new(left));
@@ -193,7 +226,6 @@ impl<'a> Parser<'a> {
             } else {
                 break;
             }
-
         }
 
         left

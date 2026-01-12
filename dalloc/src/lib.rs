@@ -26,43 +26,48 @@ pub extern "C" fn dinit() {
         write_u32(START + 4, 0);
 
         let size = memory_size();
-        write_u32(START + 8, size - 20);
-        write_u32(size - 4, size - 20);
+        write_u32(START + 8, size - 24);
+        write_u32(START + 12, size - 24);
+        write_u32(size - 4, size - 24);
     }
 }
 
 #[no_mangle]
-pub extern "C" fn dalloc(ty: u32, size: u32) -> u32 {
+pub extern "C" fn dalloc(ty: u32, length: u32) -> u32 {
     unsafe {
+        let size = length * 8;
+
         let mut current_addr = START;
-        
+
         while current_addr < memory_size() {
             let current_ty = read_u32(current_addr);
             let current_size = read_u32(current_addr + 8);
 
             if current_ty == 0 {
-                if size + 16 <= current_size {
+                if size + 20 <= current_size {
                     write_u32(current_addr, ty);
                     write_u32(current_addr + 8, size);
-                    write_u32(current_addr + 12 + size, size);
+                    write_u32(current_addr + 12, length);
+                    write_u32(current_addr + 16 + size, size);
 
-                    let left = current_size - size - 16;
-                    let new_start = current_addr + 16 + size;
+                    let left = current_size - size - 20;
+                    let new_start = current_addr + 20 + size;
 
                     write_u32(new_start, 0);
                     write_u32(new_start + 4, 0);
                     write_u32(new_start + 8, left);
-                    write_u32(new_start + 12 + left, left);
+                    write_u32(new_start + 12, left);
+                    write_u32(new_start + 16 + left, left);
 
-                    return current_addr + 12;
+                    return current_addr + 16;
                 } else if size <= current_size {
                     write_u32(current_addr, ty);
-                    return current_addr + 12;
+                    return current_addr + 16;
                 } else {
-                    current_addr = current_addr + current_size + 16;
+                    current_addr = current_addr + current_size + 20;
                 }
             } else {
-                current_addr = current_addr + current_size + 16;
+                current_addr = current_addr + current_size + 20;
             }
         }
     }
