@@ -24,6 +24,7 @@ pub enum BinaryOp {
     Srl,
     Xor,
     Is,
+    In,
 }
 
 #[derive(Debug, Clone, PartialEq)]

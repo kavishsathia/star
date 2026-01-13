@@ -539,6 +539,27 @@ impl TypeChecker {
                 }
                 Ok(left_ty.clone())
             }
+            &ast::BinaryOp::In => {
+                if let TypeKind::List { element } = &right_ty.kind {
+                    if right_ty.nullable || right_ty.errorable {
+                        return Err(TypeError::new(
+                            "Right operand must be a non-nullable, non-errorable list",
+                        ));
+                    }
+                    if !self.is_assignable(left_ty, element) {
+                        return Err(TypeError::new(
+                            "Left operand type is not compatible with list element type",
+                        ));
+                    }
+                    Ok(Type {
+                        kind: TypeKind::Boolean,
+                        nullable: false,
+                        errorable: false,
+                    })
+                } else {
+                    Err(TypeError::new("Right operand must be a list"))
+                }
+            }
         }
     }
 

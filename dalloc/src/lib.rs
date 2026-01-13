@@ -130,3 +130,41 @@ pub extern "C" fn dslice(ptr: u32, start: u32, end: u32) -> u32 {
         new_addr
     }
 }
+
+#[no_mangle]
+pub extern "C" fn din_u64(elem: u64, list: u32) -> u32 {
+    unsafe {
+        let length = read_u32(list - 4);
+
+        for i in 0..length {
+            let val = read_u64(list + (i * 8));
+            if val == elem {
+                return 1;
+            }
+        }
+
+        return 0;
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn deq(first: u32, second: u32) -> u32 {
+    unsafe {
+        let firstl = read_u32(first - 4);
+        let secondl = read_u32(second - 4);
+
+        if firstl != secondl {
+            return 0;
+        }
+
+        for i in 0..firstl {
+            let vala = read_u64(first + (i * 8));
+            let valb = read_u64(second + (i * 8));
+            if vala != valb {
+                return 0;
+            }
+        }
+
+        return 1;
+    }
+}

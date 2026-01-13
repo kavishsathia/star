@@ -97,6 +97,9 @@ pub enum Token {
     #[token("not")]
     Not,
 
+    #[token("in")]
+    In,
+
     #[token("&")]
     BitwiseAnd,
 

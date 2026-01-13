@@ -40,7 +40,7 @@ impl Codegen {
         panic!("Could not find matching function type for call_indirect")
     }
 
-    const IMPORT_COUNT: u32 = 8;
+    const IMPORT_COUNT: u32 = 10;
 
     pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
         self.functions = program.functions.clone();
@@ -62,6 +62,12 @@ impl Codegen {
             vec![ValType::I32, ValType::I32, ValType::I32],
             vec![ValType::I32],
         ); // 7: dslice
+        types
+            .ty()
+            .function(vec![ValType::I64, ValType::I32], vec![ValType::I32]); // 8: din_u64
+        types
+            .ty()
+            .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 9: deq
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
@@ -80,6 +86,8 @@ impl Codegen {
         imports.import("dalloc", "dalloc", EntityType::Function(5));
         imports.import("dalloc", "dconcat", EntityType::Function(6));
         imports.import("dalloc", "dslice", EntityType::Function(7));
+        imports.import("dalloc", "din_u64", EntityType::Function(8));
+        imports.import("dalloc", "deq", EntityType::Function(9));
         imports.import(
             "alloc",
             "memory",
@@ -261,9 +269,23 @@ impl Codegen {
                         f.instruction(&Instruction::I64Or);
                     }
                     BinaryOp::Eq => {
+                        if left.ty.kind == TypeKind::String
+                            || matches!(left.ty.kind, TypeKind::List { .. })
+                        {
+                            f.instruction(&Instruction::Call(9));
+                            return;
+                        }
                         f.instruction(&Instruction::I64Eq);
                     }
                     BinaryOp::Neq => {
+                        if left.ty.kind == TypeKind::String
+                            || matches!(left.ty.kind, TypeKind::List { .. })
+                        {
+                            f.instruction(&Instruction::Call(9));
+                            f.instruction(&Instruction::I32Const(0));
+                            f.instruction(&Instruction::I32Eqz);
+                            return;
+                        }
                         f.instruction(&Instruction::I64Ne);
                     }
                     BinaryOp::Lt => {
@@ -292,6 +314,9 @@ impl Codegen {
                     }
                     BinaryOp::Or => {
                         f.instruction(&Instruction::I32Or);
+                    }
+                    BinaryOp::In => {
+                        f.instruction(&Instruction::Call(8));
                     }
                     _ => panic!("Unsupported binary operation"),
                 }

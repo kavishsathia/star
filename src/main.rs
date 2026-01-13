@@ -24,23 +24,11 @@ use wrap::Wrapper;
 fn main() {
     let source = r#"
         fn main(): integer {
-            fn slice(): {(:integer)} {
-                let arr: {(:integer)} = {};
-
-                for let i: integer = 0; i < 10; i = i + 1; {
-                    fn ret(): integer {
-                        return i;
-                    }
-                    arr = arr + {ret};
-                }
-                return arr;
-            }
-
-            let s: {(:integer)} = slice();
-
-            for let i: integer = 0; i < #s; i = i + 1; {
-                let val: integer = s[i]();
-                print val;
+            let a: {integer} = {1, 2, 3, 4, 5};
+            let b: {integer} = {1, 2, 3, 4, 5};
+            b[0] = 10;
+            if (a != b) {
+                return 1;
             }
             
             return 0;
