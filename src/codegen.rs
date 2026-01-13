@@ -50,7 +50,7 @@ impl Codegen {
         let mut module = Module::new();
 
         let mut types = TypeSection::new();
-        types.ty().function(vec![ValType::I64], vec![]); // 0: print_i64
+        types.ty().function(vec![ValType::I32], vec![]); // 0: print
         types.ty().function(vec![], vec![]); // 1: init
         types.ty().function(vec![ValType::I32], vec![]); // 2: register
         types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 3: falloc
@@ -81,7 +81,7 @@ impl Codegen {
         module.section(&types);
 
         let mut imports = ImportSection::new();
-        imports.import("env", "print_i64", EntityType::Function(0));
+        imports.import("env", "print", EntityType::Function(0));
         imports.import("alloc", "init", EntityType::Function(1));
         imports.import("alloc", "register", EntityType::Function(2));
         imports.import("alloc", "falloc", EntityType::Function(3));

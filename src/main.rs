@@ -25,6 +25,7 @@ fn main() {
     let source = r#"
         fn main(): integer {
             let a: string = "Hello, World!";
+            print a;
             return 0;
         }
     "#;

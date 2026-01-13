@@ -5,14 +5,11 @@ fn main() -> Result<()> {
     let mut store = Store::new(&engine, ());
     let mut linker = Linker::new(&engine);
 
-    // Host function: print_i64
-    linker.func_wrap("env", "print_i64", |value: i64| {
-        println!("{}", value);
-    })?;
-
     // Load and instantiate fixed-size allocator (alloc)
     let alloc_bytes = std::fs::read("alloc/target/wasm32-unknown-unknown/release/alloc.wasm")
-        .expect("Build alloc first: cd alloc && cargo build --target wasm32-unknown-unknown --release");
+        .expect(
+            "Build alloc first: cd alloc && cargo build --target wasm32-unknown-unknown --release",
+        );
     let alloc_module = Module::new(&engine, &alloc_bytes)?;
     let alloc_instance = linker.instantiate(&mut store, &alloc_module)?;
     linker.instance(&mut store, "alloc", alloc_instance)?;
@@ -24,14 +21,36 @@ fn main() -> Result<()> {
     let dalloc_instance = linker.instantiate(&mut store, &dalloc_module)?;
     linker.instance(&mut store, "dalloc", dalloc_instance)?;
 
+    let lists = dalloc_instance
+        .get_memory(&mut store, "memory")
+        .expect("Expected a memory export in dalloc");
+
+    // Host function: print
+    linker.func_wrap("env", "print", move |caller: Caller<'_, ()>, ptr: i32| {
+        let data = lists.data(&caller);
+
+        let ptr = ptr as usize;
+        let length = u32::from_le_bytes(data[ptr - 4..ptr].try_into().unwrap());
+
+        let mut string: Vec<u8> = Vec::with_capacity(length as usize);
+
+        for i in 0..length {
+            let start = ptr + (i as usize) * 8;
+            string.push(data[start]);
+        }
+
+        let decoded = String::from_utf8(string).unwrap();
+        print!("{}\n", decoded);
+        Ok(())
+    })?;
+
     // Load Star program
-    let wasm_bytes = std::fs::read("output.wasm")
-        .expect("Failed to read output.wasm");
+    let wasm_bytes = std::fs::read("output.wasm").expect("Failed to read output.wasm");
     let module = Module::new(&engine, &wasm_bytes)?;
     let instance = linker.instantiate(&mut store, &module)?;
 
     // Get and call the main function
-    let main = instance.get_typed_func::<(i32,i64,i32), i64>(&mut store, "main")?;
+    let main = instance.get_typed_func::<(i32, i64, i32), i64>(&mut store, "main")?;
     let result = main.call(&mut store, (0, 0, 0))?;
     println!("main returned: {}", result);
 

@@ -22,7 +22,7 @@ impl<'a> Parser<'a> {
             Some(Token::String) => {
                 let slice = self.slice().to_string();
                 self.advance();
-                Expr::String(slice)
+                Expr::String(slice[1..slice.len() - 1].to_string())
             }
             Some(Token::True) => {
                 self.advance();
