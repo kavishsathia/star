@@ -1,3 +1,5 @@
+use std::f32::INFINITY;
+
 use crate::ast::{BinaryOp, Type, TypeKind, UnaryOp};
 use crate::ir::{IRExpr, IRExprKind, IRFunction, IRProgram, IRStmt, IRStruct};
 use wasm_encoder::{
@@ -16,6 +18,7 @@ impl Codegen {
             return ValType::I32;
         }
         match &ty.kind {
+            TypeKind::String => ValType::I32,
             TypeKind::Function { .. } => ValType::I64,
             TypeKind::List { .. } => ValType::I32,
             TypeKind::Struct { .. } => ValType::I32,
@@ -198,8 +201,25 @@ impl Codegen {
             IRExprKind::Boolean(b) => {
                 f.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
             }
-            IRExprKind::String(_s) => {
-                todo!()
+            IRExprKind::String(s) => {
+                f.instruction(&Instruction::I32Const(2));
+                f.instruction(&Instruction::I32Const(s.len() as i32));
+                f.instruction(&Instruction::Call(5));
+
+                f.instruction(&Instruction::LocalTee(0));
+
+                for _ in 0..s.len() {
+                    f.instruction(&Instruction::LocalGet(0));
+                }
+
+                for (i, byte) in s.bytes().enumerate() {
+                    f.instruction(&Instruction::I32Const(byte as i32));
+                    f.instruction(&Instruction::I32Store(MemArg {
+                        offset: (i * 8) as u64,
+                        align: 2,
+                        memory_index: 1,
+                    }));
+                }
             }
             IRExprKind::Null => {
                 f.instruction(&Instruction::I64Const(0));

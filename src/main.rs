@@ -24,13 +24,7 @@ use wrap::Wrapper;
 fn main() {
     let source = r#"
         fn main(): integer {
-            let a: {integer} = {1, 2, 3, 4, 5};
-            let b: {integer} = {1, 2, 3, 4, 5};
-            b[0] = 10;
-            if (a != b) {
-                return 1;
-            }
-            
+            let a: string = "Hello, World!";
             return 0;
         }
     "#;

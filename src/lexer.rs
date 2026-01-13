@@ -190,6 +190,9 @@ pub enum Token {
     #[regex(r"[0-9]+\.[0-9]+")]
     Float,
 
+    #[regex(r#"f"([^"\\]|\\.)*""#)]
+    FormattedString,
+
     #[regex(r#""([^"\\]|\\.)*""#)]
     String,
 }
