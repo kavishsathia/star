@@ -168,3 +168,34 @@ pub extern "C" fn deq(first: u32, second: u32) -> u32 {
         return 1;
     }
 }
+
+#[no_mangle]
+pub extern "C" fn ditoa(i: u64) -> u32 {
+    unsafe {
+        let mut num = i;
+        let mut digits = 0;
+
+        if num == 0 {
+            digits = 1;
+        } else {
+            while num > 0 {
+                digits += 1;
+                num /= 10;
+            }
+        }
+
+        let str_addr = dalloc(2, digits);
+        if str_addr == 0 {
+            return 0;
+        }
+
+        num = i;
+        for j in 0..digits {
+            let digit = (num % 10) as u8 + b'0';
+            write_u64(str_addr + ((digits - j - 1) * 8), digit as u64);
+            num /= 10;
+        }
+
+        str_addr
+    }
+}
