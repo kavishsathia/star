@@ -442,7 +442,8 @@ impl TypeChecker {
             ast::BinaryOp::Minus
             | ast::BinaryOp::Multiply
             | ast::BinaryOp::Divide
-            | ast::BinaryOp::Power => {
+            | ast::BinaryOp::Power
+            | ast::BinaryOp::Modulo => {
                 if !self.is_numeric(left_ty) || left_ty.nullable || left_ty.errorable {
                     return Err(TypeError::new(
                         "Left operand must be a non-nullable, non-errorable numeric type",

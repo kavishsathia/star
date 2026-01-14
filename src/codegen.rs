@@ -324,6 +324,9 @@ impl Codegen {
                     BinaryOp::Gte => {
                         f.instruction(&Instruction::I64GeS);
                     }
+                    BinaryOp::Modulo => {
+                        f.instruction(&Instruction::I64RemS);
+                    }
                     BinaryOp::Sll => {
                         f.instruction(&Instruction::I64Shl);
                     }

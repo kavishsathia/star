@@ -91,7 +91,7 @@ impl<'a> Parser<'a> {
             Token::Sll | Token::Srl => Some((15, 16)),
 
             Token::Plus | Token::Minus => Some((17, 18)),
-            Token::Multiply | Token::Divide => Some((19, 20)),
+            Token::Multiply | Token::Divide | Token::Modulo => Some((19, 20)),
 
             Token::In => Some((21, 22)),
 
@@ -130,6 +130,7 @@ impl<'a> Parser<'a> {
             Token::Srl => BinaryOp::Srl,
             Token::Is => BinaryOp::Is,
             Token::In => BinaryOp::In,
+            Token::Modulo => BinaryOp::Modulo,
             _ => panic!("Not a binary operator: {:?}", token),
         }
     }

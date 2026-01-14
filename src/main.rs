@@ -24,7 +24,7 @@ use wrap::Wrapper;
 fn main() {
     let source = r#"
         fn main(): integer {
-            let a: string = $(- 1) + $true;
+            let a: string = $(100 % 8) + " " + $true;
             print a;
             return 0;
         }

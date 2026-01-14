@@ -82,6 +82,9 @@ pub enum Token {
     #[token("-")]
     Minus,
 
+    #[token("%")]
+    Modulo,
+
     #[token("/")]
     Divide,
 
