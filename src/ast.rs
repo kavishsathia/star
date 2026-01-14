@@ -33,6 +33,7 @@ pub enum UnaryOp {
     Minus,
     Raise,
     Count,
+    Stringify,
 }
 
 #[derive(Debug, Clone, PartialEq)]

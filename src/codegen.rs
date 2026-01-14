@@ -43,7 +43,7 @@ impl Codegen {
         panic!("Could not find matching function type for call_indirect")
     }
 
-    const IMPORT_COUNT: u32 = 10;
+    const IMPORT_COUNT: u32 = 12;
 
     pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
         self.functions = program.functions.clone();
@@ -71,6 +71,8 @@ impl Codegen {
         types
             .ty()
             .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 9: deq
+        types.ty().function(vec![ValType::I64], vec![ValType::I32]); // 10: ditoa
+        types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 11: dbtoa
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
@@ -91,6 +93,8 @@ impl Codegen {
         imports.import("dalloc", "dslice", EntityType::Function(7));
         imports.import("dalloc", "din_u64", EntityType::Function(8));
         imports.import("dalloc", "deq", EntityType::Function(9));
+        imports.import("dalloc", "ditoa", EntityType::Function(10));
+        imports.import("dalloc", "dbtoa", EntityType::Function(11));
         imports.import(
             "alloc",
             "memory",
@@ -363,6 +367,20 @@ impl Codegen {
                     }));
                     f.instruction(&Instruction::I64ExtendI32U);
                 }
+                UnaryOp::Stringify => match expr.ty.kind {
+                    TypeKind::Integer => {
+                        self.compile_expr(expr, f, false);
+                        f.instruction(&Instruction::Call(10));
+                    }
+                    TypeKind::String => {
+                        self.compile_expr(expr, f, false);
+                    }
+                    TypeKind::Boolean => {
+                        self.compile_expr(expr, f, false);
+                        f.instruction(&Instruction::Call(11));
+                    }
+                    _ => panic!("Cannot stringify type {:?}", expr.ty),
+                },
             },
             IRExprKind::Call { callee, args } => {
                 let type_index = self.find_type_index(&callee.ty);

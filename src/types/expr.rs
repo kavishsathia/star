@@ -606,6 +606,18 @@ impl TypeChecker {
                     Err(TypeError::new("Operand must be a list"))
                 }
             }
+            &ast::UnaryOp::Stringify => {
+                if expr_ty.nullable || expr_ty.errorable {
+                    return Err(TypeError::new(
+                        "Operand must be non-nullable and non-errorable",
+                    ));
+                }
+                Ok(Type {
+                    kind: TypeKind::String,
+                    nullable: false,
+                    errorable: false,
+                })
+            }
         }
     }
 }

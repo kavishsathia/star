@@ -170,10 +170,13 @@ pub extern "C" fn deq(first: u32, second: u32) -> u32 {
 }
 
 #[no_mangle]
-pub extern "C" fn ditoa(i: u64) -> u32 {
+pub extern "C" fn ditoa(i: i64) -> u32 {
     unsafe {
-        let mut num = i;
+        let mut num = if i < 0 { -i } else { i } as u64;
         let mut digits = 0;
+        if i < 0 {
+            digits += 1;
+        }
 
         if num == 0 {
             digits = 1;
@@ -189,13 +192,41 @@ pub extern "C" fn ditoa(i: u64) -> u32 {
             return 0;
         }
 
-        num = i;
-        for j in 0..digits {
+        num = if i < 0 { -i } else { i } as u64;
+        let offset = if i < 0 { 1 } else { 0 };
+        let num_digits = digits - offset;
+
+        if i < 0 {
+            write_u64(str_addr, b'-' as u64);
+        }
+        for j in 0..num_digits {
             let digit = (num % 10) as u8 + b'0';
-            write_u64(str_addr + ((digits - j - 1) * 8), digit as u64);
+            write_u64(str_addr + ((offset + num_digits - j - 1) * 8), digit as u64);
             num /= 10;
         }
 
         str_addr
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn dbtoa(i: u32) -> u32 {
+    unsafe {
+        if i == 0 {
+            let str_addr = dalloc(2, 5);
+            write_u64(str_addr, b'f' as u64);
+            write_u64(str_addr + 8, b'a' as u64);
+            write_u64(str_addr + 16, b'l' as u64);
+            write_u64(str_addr + 24, b's' as u64);
+            write_u64(str_addr + 32, b'e' as u64);
+            return str_addr;
+        } else {
+            let str_addr = dalloc(2, 4);
+            write_u64(str_addr, b't' as u64);
+            write_u64(str_addr + 8, b'r' as u64);
+            write_u64(str_addr + 16, b'u' as u64);
+            write_u64(str_addr + 24, b'e' as u64);
+            return str_addr;
+        }
     }
 }

@@ -43,7 +43,11 @@ impl<'a> Parser<'a> {
                 self.expect(&Token::RParenthesis);
                 expr
             }
-            Some(Token::Not) | Some(Token::Minus) | Some(Token::Raise) | Some(Token::Count) => {
+            Some(Token::Not)
+            | Some(Token::Minus)
+            | Some(Token::Raise)
+            | Some(Token::Count)
+            | Some(Token::Stringify) => {
                 let op = self.advance().unwrap();
                 let rbp = Parser::prefix_binding_power(&op).unwrap();
                 let expr = self.parse_expression(rbp);
@@ -62,6 +66,10 @@ impl<'a> Parser<'a> {
                     },
                     Token::Count => Expr::Unary {
                         op: UnaryOp::Count,
+                        expr: Box::new(expr),
+                    },
+                    Token::Stringify => Expr::Unary {
+                        op: UnaryOp::Stringify,
                         expr: Box::new(expr),
                     },
                     _ => unreachable!(),

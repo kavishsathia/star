@@ -46,6 +46,9 @@ pub enum Token {
     #[token("#")]
     Count,
 
+    #[token("$")]
+    Stringify,
+
     #[token("??")]
     NotNull,
 
