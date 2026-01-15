@@ -230,3 +230,34 @@ pub extern "C" fn dbtoa(i: u32) -> u32 {
         }
     }
 }
+
+#[no_mangle]
+pub extern "C" fn dftoa(value: f64) -> u32 {
+    unsafe {
+        let int_part = value as i64;
+        let frac = value - (int_part as f64);
+        let frac_abs = if frac < 0.0 { -frac } else { frac };
+        let frac_part = (frac_abs * 1000000.0 + 0.5) as u64;
+
+        let int_str = ditoa(int_part);
+        let dot_str = dalloc(2, 1);
+        write_u64(dot_str, b'.' as u64);
+
+        let frac_str = ditoa(frac_part as i64);
+        let frac_len = read_u32(frac_str - 4);
+
+        let zeros_needed = 6 - frac_len;
+        let padded_frac = if zeros_needed > 0 {
+            let zeros = dalloc(2, zeros_needed);
+            for i in 0..zeros_needed {
+                write_u64(zeros + i * 8, b'0' as u64);
+            }
+            dconcat(zeros, frac_str)
+        } else {
+            frac_str
+        };
+
+        let with_dot = dconcat(int_str, dot_str);
+        dconcat(with_dot, padded_frac)
+    }
+}

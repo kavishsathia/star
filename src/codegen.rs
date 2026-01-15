@@ -22,6 +22,8 @@ impl Codegen {
             TypeKind::Function { .. } => ValType::I64,
             TypeKind::List { .. } => ValType::I32,
             TypeKind::Struct { .. } => ValType::I32,
+            TypeKind::Boolean => ValType::I32,
+            TypeKind::Float => ValType::F64,
             _ => ValType::I64,
         }
     }
@@ -43,7 +45,7 @@ impl Codegen {
         panic!("Could not find matching function type for call_indirect")
     }
 
-    const IMPORT_COUNT: u32 = 12;
+    const IMPORT_COUNT: u32 = 13;
 
     pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
         self.functions = program.functions.clone();
@@ -73,6 +75,7 @@ impl Codegen {
             .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 9: deq
         types.ty().function(vec![ValType::I64], vec![ValType::I32]); // 10: ditoa
         types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 11: dbtoa
+        types.ty().function(vec![ValType::F64], vec![ValType::I32]); // 12: dftoa
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
@@ -95,6 +98,7 @@ impl Codegen {
         imports.import("dalloc", "deq", EntityType::Function(9));
         imports.import("dalloc", "ditoa", EntityType::Function(10));
         imports.import("dalloc", "dbtoa", EntityType::Function(11));
+        imports.import("dalloc", "dftoa", EntityType::Function(12));
         imports.import(
             "alloc",
             "memory",
@@ -278,13 +282,29 @@ impl Codegen {
                         }
                     }
                     BinaryOp::Minus => {
-                        f.instruction(&Instruction::I64Sub);
+                        if left.ty.kind == TypeKind::Integer {
+                            f.instruction(&Instruction::I64Sub);
+                            return;
+                        } else if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Sub);
+                            return;
+                        } else {
+                            panic!("Cannot subtract non-numeric types");
+                        }
                     }
                     BinaryOp::Multiply => {
-                        f.instruction(&Instruction::I64Mul);
+                        if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Mul);
+                        } else {
+                            f.instruction(&Instruction::I64Mul);
+                        }
                     }
                     BinaryOp::Divide => {
-                        f.instruction(&Instruction::I64DivS);
+                        if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Div);
+                        } else {
+                            f.instruction(&Instruction::I64DivS);
+                        }
                     }
                     BinaryOp::BitwiseAnd => {
                         f.instruction(&Instruction::I64And);
@@ -299,7 +319,11 @@ impl Codegen {
                             f.instruction(&Instruction::Call(9));
                             return;
                         }
-                        f.instruction(&Instruction::I64Eq);
+                        if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Eq);
+                        } else {
+                            f.instruction(&Instruction::I64Eq);
+                        }
                     }
                     BinaryOp::Neq => {
                         if left.ty.kind == TypeKind::String
@@ -310,19 +334,39 @@ impl Codegen {
                             f.instruction(&Instruction::I32Eqz);
                             return;
                         }
-                        f.instruction(&Instruction::I64Ne);
+                        if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Ne);
+                        } else {
+                            f.instruction(&Instruction::I64Ne);
+                        }
                     }
                     BinaryOp::Lt => {
-                        f.instruction(&Instruction::I64LtS);
+                        if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Lt);
+                        } else {
+                            f.instruction(&Instruction::I64LtS);
+                        }
                     }
                     BinaryOp::Gt => {
-                        f.instruction(&Instruction::I64GtS);
+                        if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Gt);
+                        } else {
+                            f.instruction(&Instruction::I64GtS);
+                        }
                     }
                     BinaryOp::Lte => {
-                        f.instruction(&Instruction::I64LeS);
+                        if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Le);
+                        } else {
+                            f.instruction(&Instruction::I64LeS);
+                        }
                     }
                     BinaryOp::Gte => {
-                        f.instruction(&Instruction::I64GeS);
+                        if left.ty.kind == TypeKind::Float {
+                            f.instruction(&Instruction::F64Ge);
+                        } else {
+                            f.instruction(&Instruction::I64GeS);
+                        }
                     }
                     BinaryOp::Modulo => {
                         f.instruction(&Instruction::I64RemS);
@@ -350,9 +394,14 @@ impl Codegen {
             }
             IRExprKind::Unary { op, expr } => match op {
                 UnaryOp::Minus => {
-                    f.instruction(&Instruction::I64Const(0));
-                    self.compile_expr(expr, f, false);
-                    f.instruction(&Instruction::I64Sub);
+                    if expr.ty.kind == TypeKind::Float {
+                        self.compile_expr(expr, f, false);
+                        f.instruction(&Instruction::F64Neg);
+                    } else {
+                        f.instruction(&Instruction::I64Const(0));
+                        self.compile_expr(expr, f, false);
+                        f.instruction(&Instruction::I64Sub);
+                    }
                 }
                 UnaryOp::Not => {
                     self.compile_expr(expr, f, false);
@@ -381,6 +430,10 @@ impl Codegen {
                     TypeKind::Boolean => {
                         self.compile_expr(expr, f, false);
                         f.instruction(&Instruction::Call(11));
+                    }
+                    TypeKind::Float => {
+                        self.compile_expr(expr, f, false);
+                        f.instruction(&Instruction::Call(12));
                     }
                     _ => panic!("Cannot stringify type {:?}", expr.ty),
                 },
