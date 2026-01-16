@@ -1,0 +1,10 @@
+[package]
+name = "shadow"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dev-dependencies]
+wasmtime = "29.0"
