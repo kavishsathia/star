@@ -1,5 +1,6 @@
 /target
 /alloc/target
 /dalloc/target
+/shadow/target
 output.wasm
 todo.md

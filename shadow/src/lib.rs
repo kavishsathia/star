@@ -51,10 +51,10 @@ pub extern "C" fn pop() {
 }
 
 #[no_mangle]
-pub extern "C" fn set(index: u32, ty: u32, value: u32) {
+pub extern "C" fn set(value: u32, index: u32, ty: u32) {
     unsafe {
         let fp = read_u32(FRAME_POINTER_ADDR);
-        write_u32(fp - (index * 8), ty);
+        write_u32(fp + (index * 8), ty);
         write_u32(fp + (index * 8) + 4, value);
     }
 }

@@ -21,6 +21,13 @@ fn main() -> Result<()> {
     let dalloc_instance = linker.instantiate(&mut store, &dalloc_module)?;
     linker.instance(&mut store, "dalloc", dalloc_instance)?;
 
+    // Load and instantiate shadow stack for GC roots
+    let shadow_bytes = std::fs::read("shadow/target/wasm32-unknown-unknown/release/shadow.wasm")
+        .expect("Build shadow first: cd shadow && cargo build --target wasm32-unknown-unknown --release");
+    let shadow_module = Module::new(&engine, &shadow_bytes)?;
+    let shadow_instance = linker.instantiate(&mut store, &shadow_module)?;
+    linker.instance(&mut store, "shadow", shadow_instance)?;
+
     let lists = dalloc_instance
         .get_memory(&mut store, "memory")
         .expect("Expected a memory export in dalloc");

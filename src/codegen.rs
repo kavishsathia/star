@@ -45,7 +45,7 @@ impl Codegen {
         panic!("Could not find matching function type for call_indirect")
     }
 
-    const IMPORT_COUNT: u32 = 13;
+    const IMPORT_COUNT: u32 = 17;
 
     pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
         self.functions = program.functions.clone();
@@ -76,6 +76,13 @@ impl Codegen {
         types.ty().function(vec![ValType::I64], vec![ValType::I32]); // 10: ditoa
         types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 11: dbtoa
         types.ty().function(vec![ValType::F64], vec![ValType::I32]); // 12: dftoa
+        types.ty().function(vec![], vec![]); // 13: sinit
+        types.ty().function(vec![ValType::I32], vec![]); // 14: spush
+        types.ty().function(vec![], vec![]); // 15: spop
+        types.ty().function(
+            vec![ValType::I32, ValType::I32, ValType::I32],
+            vec![],
+        ); // 16: sset
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
@@ -99,6 +106,10 @@ impl Codegen {
         imports.import("dalloc", "ditoa", EntityType::Function(10));
         imports.import("dalloc", "dbtoa", EntityType::Function(11));
         imports.import("dalloc", "dftoa", EntityType::Function(12));
+        imports.import("shadow", "init", EntityType::Function(13));
+        imports.import("shadow", "push", EntityType::Function(14));
+        imports.import("shadow", "pop", EntityType::Function(15));
+        imports.import("shadow", "set", EntityType::Function(16));
         imports.import(
             "alloc",
             "memory",
@@ -115,6 +126,17 @@ impl Codegen {
             "memory",
             EntityType::Memory(wasm_encoder::MemoryType {
                 minimum: 16,
+                maximum: None,
+                memory64: false,
+                shared: false,
+                page_size_log2: None,
+            }),
+        );
+        imports.import(
+            "shadow",
+            "memory",
+            EntityType::Memory(wasm_encoder::MemoryType {
+                minimum: 1,
                 maximum: None,
                 memory64: false,
                 shared: false,
@@ -182,11 +204,41 @@ impl Codegen {
         let mut f = Function::new(locals);
 
         if func.name == "main" {
-            f.instruction(&Instruction::Call(1)); // alloc::init
-            f.instruction(&Instruction::Call(4)); // dalloc::dinit
+            f.instruction(&Instruction::Call(1));
+            f.instruction(&Instruction::Call(4));
+            f.instruction(&Instruction::Call(13));
             for ir_struct in &program.structs {
                 f.instruction(&Instruction::I32Const(ir_struct.size as i32));
                 f.instruction(&Instruction::Call(2));
+            }
+        }
+
+        let frame_size = 1 + func.params.len() + func.locals.len();
+        f.instruction(&Instruction::I32Const(frame_size as i32));
+        f.instruction(&Instruction::Call(14));
+
+        f.instruction(&Instruction::LocalGet(2));
+        f.instruction(&Instruction::I32Const(0));
+        f.instruction(&Instruction::I32Const(1));
+        f.instruction(&Instruction::Call(16));
+
+        for (i, param_ty) in func.params.iter().enumerate() {
+            let local_index = 3 + i as u32;
+            let shadow_slot = 1 + i as i32;
+            match &param_ty.kind {
+                TypeKind::Struct { .. } => {
+                    f.instruction(&Instruction::LocalGet(local_index));
+                    f.instruction(&Instruction::I32Const(shadow_slot));
+                    f.instruction(&Instruction::I32Const(1));
+                    f.instruction(&Instruction::Call(16));
+                }
+                TypeKind::List { .. } | TypeKind::String => {
+                    f.instruction(&Instruction::LocalGet(local_index));
+                    f.instruction(&Instruction::I32Const(shadow_slot));
+                    f.instruction(&Instruction::I32Const(2));
+                    f.instruction(&Instruction::Call(16));
+                }
+                _ => {}
             }
         }
 
@@ -194,6 +246,7 @@ impl Codegen {
             self.compile_stmt(stmt, &mut f);
         }
 
+        f.instruction(&Instruction::Call(15));
         f.instruction(&Instruction::End);
         codes.function(&f);
     }
@@ -243,6 +296,21 @@ impl Codegen {
                 if let IRExprKind::Local(index) = &left.node {
                     self.compile_expr(right, f, false);
                     f.instruction(&Instruction::LocalTee(*index));
+                    match &right.ty.kind {
+                        TypeKind::Struct { .. } => {
+                            f.instruction(&Instruction::I32Const((*index - 2) as i32));
+                            f.instruction(&Instruction::I32Const(1));
+                            f.instruction(&Instruction::Call(16));
+                            f.instruction(&Instruction::LocalGet(*index));
+                        }
+                        TypeKind::List { .. } | TypeKind::String => {
+                            f.instruction(&Instruction::I32Const((*index - 2) as i32));
+                            f.instruction(&Instruction::I32Const(2));
+                            f.instruction(&Instruction::Call(16));
+                            f.instruction(&Instruction::LocalGet(*index));
+                        }
+                        _ => {}
+                    }
                 } else if let IRExprKind::FieldReference { object, offset } = &left.node {
                     self.compile_expr(left, f, false);
                     f.instruction(&Instruction::LocalTee(0));
@@ -606,8 +674,24 @@ impl Codegen {
             }
             IRStmt::LocalSet { index, value } => {
                 self.compile_expr(value, f, false);
-                println!("Setting local {} ", index);
-                f.instruction(&Instruction::LocalSet(*index));
+                // println!("Setting local {} ", index);
+                f.instruction(&Instruction::LocalTee(*index));
+                match value.ty.kind {
+                    TypeKind::Struct { .. } => {
+                        f.instruction(&Instruction::I32Const((*index - 2) as i32));
+                        f.instruction(&Instruction::I32Const(1));
+                        f.instruction(&Instruction::Call(16));
+                    }
+                    TypeKind::List { .. } | TypeKind::String => {
+                        f.instruction(&Instruction::I32Const((*index - 2) as i32));
+                        f.instruction(&Instruction::I32Const(2));
+                        f.instruction(&Instruction::Call(16));
+                    }
+                    _ => {
+                        f.instruction(&Instruction::Drop);
+                    }
+                }
+
             }
             IRStmt::Return(expr) => {
                 if let Some(expr) = expr {
@@ -615,6 +699,7 @@ impl Codegen {
                 } else {
                     f.instruction(&Instruction::I64Const(0));
                 }
+                f.instruction(&Instruction::Call(15));
                 f.instruction(&Instruction::Return);
             }
             IRStmt::Break => {
@@ -702,6 +787,10 @@ impl Codegen {
                 f.instruction(&Instruction::I64Shl);
                 f.instruction(&Instruction::I64Or);
                 f.instruction(&Instruction::LocalSet(*index));
+                f.instruction(&Instruction::LocalGet(0));
+                f.instruction(&Instruction::I32Const((*index - 2) as i32));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::Call(16));
                 f.instruction(&Instruction::LocalGet(0));
                 self.compile_expr(captures, f, true);
             }
