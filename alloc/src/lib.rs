@@ -1,7 +1,7 @@
 #![no_std]
 
 const TYPE_TABLE_INDEX: u32 = 8;
-const TYPE_TABLE_RECORD_SIZE: u32 = 8;
+const TYPE_TABLE_RECORD_SIZE: u32 = 16;
 const HEADER_SIZE: u32 = 8;
 const BUMP_PTR_ADDR: u32 = 4;
 
@@ -26,13 +26,15 @@ pub extern "C" fn init() {
 }
 
 #[no_mangle]
-pub extern "C" fn register(size: u32) {
+pub extern "C" fn register(size: u32, struct_count: u32, list_count: u32) {
     unsafe {
         let bump = read_u32(BUMP_PTR_ADDR);
         write_u32(BUMP_PTR_ADDR, bump + TYPE_TABLE_RECORD_SIZE);
 
         write_u32(bump, size);
         write_u32(bump + 4, 0);
+        write_u32(bump + 8, struct_count);
+        write_u32(bump + 12, list_count);
     }
 }
 

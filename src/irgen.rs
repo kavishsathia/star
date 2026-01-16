@@ -30,12 +30,13 @@ impl IRGenerator {
         }
     }
 
-    fn lower_struct(&mut self, stmt: &AnalyzedStatement) -> IRStruct {
+    fn lower_struct(&mut self, entry: &(AnalyzedStatement, u32, u32)) -> IRStruct {
+        let (stmt, struct_count, list_count) = entry;
         match stmt {
             AnalyzedStatement::Struct { name, fields } => {
                 let mut offsets = vec![];
                 let mut offset = 0u32;
-                for (_, ty) in fields {
+                for _ in fields {
                     offsets.push(offset);
                     offset += 8;
                 }
@@ -44,6 +45,8 @@ impl IRGenerator {
                     fields: fields.clone(),
                     size: offset,
                     offsets,
+                    struct_count: *struct_count,
+                    list_count: *list_count,
                     kind: crate::ir::IRStructKind::Captures,
                 }
             }

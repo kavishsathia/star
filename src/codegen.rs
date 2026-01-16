@@ -54,7 +54,7 @@ impl Codegen {
         let mut types = TypeSection::new();
         types.ty().function(vec![ValType::I32], vec![]); // 0: print
         types.ty().function(vec![], vec![]); // 1: init
-        types.ty().function(vec![ValType::I32], vec![]); // 2: register
+        types.ty().function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]); // 2: register
         types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 3: falloc
         types.ty().function(vec![], vec![]); // 4: dinit
         types
@@ -209,6 +209,8 @@ impl Codegen {
             f.instruction(&Instruction::Call(13));
             for ir_struct in &program.structs {
                 f.instruction(&Instruction::I32Const(ir_struct.size as i32));
+                f.instruction(&Instruction::I32Const(ir_struct.struct_count as i32));
+                f.instruction(&Instruction::I32Const(ir_struct.list_count as i32));
                 f.instruction(&Instruction::Call(2));
             }
         }

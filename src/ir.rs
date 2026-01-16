@@ -135,6 +135,8 @@ pub struct IRStruct {
     pub size: u32,
     pub offsets: Vec<u32>,
     pub kind: IRStructKind,
+    pub struct_count: u32,
+    pub list_count: u32,
 }
 
 #[derive(Debug, Clone)]

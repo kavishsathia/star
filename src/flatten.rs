@@ -2,8 +2,31 @@ use crate::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
 use crate::ast::{Type, TypeKind};
 use crate::fast::FlattenedProgram;
 
+pub fn segregate_fields(fields: Vec<(String, Type)>) -> (Vec<(String, Type)>, u32, u32) {
+    let mut struct_ptrs = vec![];
+    let mut list_ptrs = vec![];
+    let mut primitives = vec![];
+
+    for (name, ty) in fields {
+        match &ty.kind {
+            // TODO: function change order
+            TypeKind::Struct { .. } | TypeKind::Function { .. } => struct_ptrs.push((name, ty)),
+            TypeKind::List { .. } | TypeKind::String => list_ptrs.push((name, ty)),
+            _ => primitives.push((name, ty)),
+        }
+    }
+
+    let struct_count = struct_ptrs.len() as u32;
+    let list_count = list_ptrs.len() as u32;
+
+    struct_ptrs.append(&mut list_ptrs);
+    struct_ptrs.append(&mut primitives);
+
+    (struct_ptrs, struct_count, list_count)
+}
+
 pub struct Flattener {
-    structs: Vec<AnalyzedStatement>,
+    structs: Vec<(AnalyzedStatement, u32, u32)>,
     functions: Vec<AnalyzedStatement>,
     captures: Vec<(String, Type, CaptureKind)>,
 }
@@ -165,13 +188,20 @@ impl Flattener {
                 println!("Function '{}' captures {:?}", name, fn_captures);
                 println!("Function '{}' captures: {:?}", name, captures_to_pass_down);
 
-                self.structs.push(AnalyzedStatement::Struct {
-                    name: format!("{}", name),
-                    fields: captures_to_pass_down
+                let (segregated, struct_count, list_count) = segregate_fields(
+                    captures_to_pass_down
                         .iter()
                         .map(|(n, t, _)| (n.clone(), t.clone()))
                         .collect(),
-                });
+                );
+                self.structs.push((
+                    AnalyzedStatement::Struct {
+                        name: format!("{}", name),
+                        fields: segregated,
+                    },
+                    struct_count,
+                    list_count,
+                ));
 
                 let outer_fields: Vec<(String, AnalyzedExpr)> = captures
                     .iter()
@@ -310,12 +340,13 @@ impl Flattener {
                 }
             }
             AnalyzedStatement::Struct { name, fields } => {
+                let (segregated, struct_count, list_count) = segregate_fields(fields.clone());
                 let str = AnalyzedStatement::Struct {
                     name: name.clone(),
-                    fields: fields.clone(),
+                    fields: segregated,
                 };
 
-                self.structs.push(str.clone());
+                self.structs.push((str.clone(), struct_count, list_count));
                 str
             }
             nonfunc => nonfunc.clone(),

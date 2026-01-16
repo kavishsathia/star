@@ -20,7 +20,7 @@ impl Wrapper {
     }
 
     fn build_lookups(&mut self, program: &FlattenedProgram) {
-        for stmt in &program.structs {
+        for (stmt, _, _) in &program.structs {
             if let AnalyzedStatement::Struct { name, fields } = stmt {
                 self.structs.insert(name.clone(), fields.clone());
             }
@@ -384,27 +384,31 @@ impl Wrapper {
             .map(|f| self.wrap_function(f))
             .collect();
 
-        let tagged_union_struct = AnalyzedStatement::Struct {
-            name: "".to_string(),
-            fields: vec![
-                (
-                    "tag".to_string(),
-                    Type {
-                        kind: TypeKind::Integer,
-                        nullable: false,
-                        errorable: false,
-                    },
-                ),
-                (
-                    "value".to_string(),
-                    Type {
-                        kind: TypeKind::Integer,
-                        nullable: false,
-                        errorable: false,
-                    },
-                ),
-            ],
-        };
+        let tagged_union_struct = (
+            AnalyzedStatement::Struct {
+                name: "".to_string(),
+                fields: vec![
+                    (
+                        "tag".to_string(),
+                        Type {
+                            kind: TypeKind::Integer,
+                            nullable: false,
+                            errorable: false,
+                        },
+                    ),
+                    (
+                        "value".to_string(),
+                        Type {
+                            kind: TypeKind::Integer,
+                            nullable: false,
+                            errorable: false,
+                        },
+                    ),
+                ],
+            },
+            0u32,
+            0u32,
+        );
 
         let mut structs = vec![tagged_union_struct];
         structs.extend(program.structs);
