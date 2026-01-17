@@ -24,6 +24,11 @@ unsafe fn write_u32(addr: u32, val: u32) {
 }
 
 #[no_mangle]
+pub extern "C" fn write_alloc(addr: u32, val: u32) {
+    unsafe { write_u32(addr, val) }
+}
+
+#[no_mangle]
 pub extern "C" fn init() {
     unsafe {
         write_u32(BUMP_PTR_ADDR, TYPE_TABLE_INDEX);

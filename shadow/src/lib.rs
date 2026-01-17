@@ -3,11 +3,13 @@
 #[link(wasm_import_module = "alloc")]
 extern "C" {
     fn read_alloc(addr: u32) -> u32;
+    fn write_alloc(addr: u32, val: u32);
 }
 
 #[link(wasm_import_module = "dalloc")]
 extern "C" {
     fn read_dalloc(addr: u32) -> u32;
+    fn write_dalloc(addr: u32, val: u32);
 }
 
 const STACK_POINTER: u32 = 12;

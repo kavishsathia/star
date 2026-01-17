@@ -24,6 +24,11 @@ unsafe fn write_u32(addr: u32, val: u32) {
     *(addr as *mut u32) = val;
 }
 
+#[no_mangle]
+pub extern "C" fn write_dalloc(addr: u32, val: u32) {
+    unsafe { write_u32(addr, val) }
+}
+
 unsafe fn read_u64(addr: u32) -> u64 {
     *(addr as *const u64)
 }
