@@ -94,6 +94,70 @@ pub extern "C" fn dalloc(ty: u32, length: u32) -> u32 {
 }
 
 #[no_mangle]
+pub extern "C" fn dfree(pointer: u32) -> u32 {
+    unsafe {
+        let addr = pointer - 16;
+        write_u32(addr, 0);
+        let mut ret = addr;
+
+        let size = read_u32(addr + 8);
+        let end = addr + 20 + size;
+
+        if end < memory_size() {
+            let next_ty = read_u32(end);
+            if next_ty == 0 {
+                let next_size = read_u32(end + 8);
+                let combined_size = size + 20 + next_size;
+                write_u32(addr + 8, combined_size);
+                write_u32(addr + 12, combined_size);
+                write_u32(addr + 16 + combined_size, combined_size);
+            }
+        }
+
+        if addr > START {
+            let prev_size = read_u32(addr - 4);
+            let prev_addr = addr - 20 - prev_size;
+            let prev_ty = read_u32(prev_addr);
+            if prev_ty == 0 {
+                let combined_size = prev_size + 20 + read_u32(addr + 8);
+                write_u32(prev_addr + 8, combined_size);
+                write_u32(prev_addr + 12, combined_size);
+                write_u32(prev_addr + 16 + combined_size, combined_size);
+
+                ret = prev_addr;
+            }
+        }
+    }
+
+    ret
+}
+
+#[no_mangle]
+pub extern "C" fn sweep() -> u32 {
+    unsafe {
+        let mut current_addr = START;
+
+        while current_addr < memory_size() {
+            let current_ty = read_u32(current_addr);
+            let current_mark = read_u32(current_addr + 4);
+            let mut new_addr = current_addr;
+
+            if current_ty != 0 && current_mark == 0 {
+                new_addr = dfree(current_addr + 16);
+            }
+
+            if current_mark == 1 {
+                write_u32(current_addr + 4, 0);
+            }
+
+            current_addr = new_addr + read_u32(new_addr + 8) + 20;
+        }
+    }
+
+    0
+}
+
+#[no_mangle]
 pub extern "C" fn dconcat(first: u32, second: u32) -> u32 {
     unsafe {
         let ty = read_u32(first - 16);
