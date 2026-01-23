@@ -5,6 +5,7 @@ extern "C" {
     fn read_alloc(addr: u32) -> u32;
     fn write_alloc(addr: u32, val: u32);
     fn sweep() -> u32;
+    fn alloc_memory_size() -> u32;
 }
 
 #[link(wasm_import_module = "dalloc")]
@@ -13,6 +14,7 @@ extern "C" {
     fn write_dalloc(addr: u32, val: u32);
     #[link_name = "sweep"]
     fn dsweep() -> u32;
+    fn dalloc_memory_size() -> u32;
 }
 
 const TYPE_TABLE_INDEX: u32 = 12;
@@ -109,7 +111,7 @@ pub extern "C" fn mark_pointer(pointer: u32, memory: u32) {
             return;
         }
         if memory == 1 {
-            if read_alloc(pointer - 4) != 1 {
+            if pointer < alloc_memory_size() - 400 && read_alloc(pointer - 4) != 1 {
                 let ty = read_alloc(pointer - 8);
 
                 write_alloc(pointer - 4, 1);
@@ -129,7 +131,8 @@ pub extern "C" fn mark_pointer(pointer: u32, memory: u32) {
                 }
             }
         } else {
-            if pointer < 1000 && read_dalloc(pointer - 12) != 1 {
+            // TODO: Handle 400
+            if pointer < dalloc_memory_size() - 400 && read_dalloc(pointer - 12) != 1 {
                 let length = read_dalloc(pointer - 4);
                 let ty = read_dalloc(pointer - 16);
 

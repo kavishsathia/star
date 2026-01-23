@@ -7,8 +7,13 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-fn memory_size() -> u32 {
+#[no_mangle]
+pub extern "C" fn dalloc_memory_size() -> u32 {
     (core::arch::wasm32::memory_size(0) as u32) * 65536
+}
+
+fn memory_size() -> u32 {
+    dalloc_memory_size()
 }
 
 unsafe fn read_u32(addr: u32) -> u32 {

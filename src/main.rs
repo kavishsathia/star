@@ -23,9 +23,15 @@ use wrap::Wrapper;
 
 fn main() {
     let source = r#"
+        struct Node {
+            value: integer
+        }
+
         fn main(): integer {
             for let i: integer = 0; i < 1000000; i = i + 1; {
-                let s: string = "number ";
+                let s: Node = new Node {
+                    value: i,
+                };
             }
 
             return 42;

@@ -11,6 +11,11 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+#[no_mangle]
+pub extern "C" fn alloc_memory_size() -> u32 {
+    (core::arch::wasm32::memory_size(0) as u32) * 65536
+}
+
 unsafe fn read_u32(addr: u32) -> u32 {
     *(addr as *const u32)
 }
@@ -62,6 +67,10 @@ pub extern "C" fn falloc(id: u32) -> u32 {
 
             let block_size = HEADER_SIZE + size;
             let slab_size = 32 * block_size;
+
+            if bump + slab_size > alloc_memory_size() {
+                return 0;
+            }
 
             write_u32(BUMP_PTR_ADDR, bump + slab_size);
 
