@@ -15,6 +15,9 @@ extern "C" {
     fn dsweep() -> u32;
 }
 
+const TYPE_TABLE_INDEX: u32 = 12;
+const TYPE_TABLE_RECORD_SIZE: u32 = 16;
+
 const STACK_POINTER: u32 = 12;
 const FRAME_POINTER: u32 = 12;
 const STACK_POINTER_ADDR: u32 = 4;
@@ -111,14 +114,14 @@ pub extern "C" fn mark_pointer(pointer: u32, memory: u32) {
 
                 write_alloc(pointer - 4, 1);
 
-                let scount = read_u32(TYPE_TABLE_INDEX + (ty * TYPE_TABLE_RECORD_SIZE) + 8);
+                let scount = read_alloc(TYPE_TABLE_INDEX + (ty * TYPE_TABLE_RECORD_SIZE) + 8);
                 for i in 0..scount {
                     let field_addr = pointer + (i * 8);
                     let field_ptr = read_alloc(field_addr);
                     mark_pointer(field_ptr, 1);
                 }
 
-                let lcount = read_u32(TYPE_TABLE_INDEX + (ty * TYPE_TABLE_RECORD_SIZE) + 12);
+                let lcount = read_alloc(TYPE_TABLE_INDEX + (ty * TYPE_TABLE_RECORD_SIZE) + 12);
                 for i in 0..lcount {
                     let list_addr = pointer + (scount * 8) + (i * 8);
                     let list_ptr = read_alloc(list_addr);
@@ -126,7 +129,7 @@ pub extern "C" fn mark_pointer(pointer: u32, memory: u32) {
                 }
             }
         } else {
-            if read_dalloc(pointer - 12) != 1 {
+            if pointer < 1000 && read_dalloc(pointer - 12) != 1 {
                 let length = read_dalloc(pointer - 4);
                 let ty = read_dalloc(pointer - 16);
 
@@ -135,9 +138,9 @@ pub extern "C" fn mark_pointer(pointer: u32, memory: u32) {
                 for i in 0..length {
                     let element_addr = pointer + (i * 8);
                     let element_ptr = read_dalloc(element_addr);
-                    if ty == 1 {
+                    if ty == 2 {
                         mark_pointer(element_ptr, 1);
-                    } else if ty == 2 {
+                    } else if ty == 3 {
                         mark_pointer(element_ptr, 2);
                     }
                 }

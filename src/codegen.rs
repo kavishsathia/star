@@ -45,7 +45,7 @@ impl Codegen {
         panic!("Could not find matching function type for call_indirect")
     }
 
-    const IMPORT_COUNT: u32 = 17;
+    const IMPORT_COUNT: u32 = 18;
 
     pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
         self.functions = program.functions.clone();
@@ -54,7 +54,9 @@ impl Codegen {
         let mut types = TypeSection::new();
         types.ty().function(vec![ValType::I32], vec![]); // 0: print
         types.ty().function(vec![], vec![]); // 1: init
-        types.ty().function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]); // 2: register
+        types
+            .ty()
+            .function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]); // 2: register
         types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 3: falloc
         types.ty().function(vec![], vec![]); // 4: dinit
         types
@@ -79,10 +81,11 @@ impl Codegen {
         types.ty().function(vec![], vec![]); // 13: sinit
         types.ty().function(vec![ValType::I32], vec![]); // 14: spush
         types.ty().function(vec![], vec![]); // 15: spop
-        types.ty().function(
-            vec![ValType::I32, ValType::I32, ValType::I32],
-            vec![],
-        ); // 16: sset
+        types
+            .ty()
+            .function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]); // 16: sset
+        types.ty().function(vec![], vec![]); // 17: gc
+
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
@@ -110,6 +113,7 @@ impl Codegen {
         imports.import("shadow", "push", EntityType::Function(14));
         imports.import("shadow", "pop", EntityType::Function(15));
         imports.import("shadow", "set", EntityType::Function(16));
+        imports.import("shadow", "gc", EntityType::Function(17));
         imports.import(
             "alloc",
             "memory",
@@ -265,11 +269,20 @@ impl Codegen {
                 f.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
             }
             IRExprKind::String(s) => {
-                f.instruction(&Instruction::I32Const(2));
+                f.instruction(&Instruction::I32Const(1));
                 f.instruction(&Instruction::I32Const(s.len() as i32));
                 f.instruction(&Instruction::Call(5));
-
                 f.instruction(&Instruction::LocalTee(0));
+                f.instruction(&Instruction::I32Eqz);
+                f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
+                f.instruction(&Instruction::Call(17));
+                f.instruction(&Instruction::I32Const(1));
+                f.instruction(&Instruction::I32Const(s.len() as i32));
+                f.instruction(&Instruction::Call(5));
+                f.instruction(&Instruction::LocalSet(0));
+                f.instruction(&Instruction::End);
+
+                f.instruction(&Instruction::LocalGet(0));
 
                 for _ in 0..s.len() {
                     f.instruction(&Instruction::LocalGet(0));
@@ -693,7 +706,6 @@ impl Codegen {
                         f.instruction(&Instruction::Drop);
                     }
                 }
-
             }
             IRStmt::Return(expr) => {
                 if let Some(expr) = expr {

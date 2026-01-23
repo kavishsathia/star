@@ -24,12 +24,11 @@ use wrap::Wrapper;
 fn main() {
     let source = r#"
         fn main(): integer {
-            let a: string = $(4.2 == 4.3) + " " + $true;
-            let b: string = $#{1, 2, 3};
-            b = b + " " + $#{};
-            print a;
-            print b;
-            return 0;
+            for let i: integer = 0; i < 1000000; i = i + 1; {
+                let s: string = "number ";
+            }
+
+            return 42;
         }
     "#;
 

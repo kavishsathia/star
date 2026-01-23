@@ -127,9 +127,9 @@ pub extern "C" fn dfree(pointer: u32) -> u32 {
                 ret = prev_addr;
             }
         }
-    }
 
-    ret
+        ret
+    }
 }
 
 #[no_mangle]
