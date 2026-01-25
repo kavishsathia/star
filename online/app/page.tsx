@@ -5,45 +5,45 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       {/* hero */}
-      <section className="min-h-screen flex flex-col items-center justify-center px-6">
+      <section className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-6">
         <Image
           src="/logo.png"
           alt=".*lang"
           width={320}
           height={80}
           priority
-          className="mb-8"
+          className="mb-6 sm:mb-8 w-48 sm:w-80"
         />
 
-        <p className="text-[#888888] text-xl text-center max-w-2xl leading-relaxed mb-12">
+        <p className="text-[#888888] text-base sm:text-xl text-center max-w-2xl leading-relaxed mb-8 sm:mb-12 px-2">
           a statically-typed programming language for{" "}
           <span className="text-[#e0e0e0]">cross-language library development</span>
         </p>
 
-        <div className="flex gap-6 mb-16">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 mb-12 sm:mb-16 w-full sm:w-auto px-4 sm:px-0">
           <Link
             href="/playground?doc=quickstart/intro"
-            className="px-8 py-4 bg-[#e0e0e0] rounded font-bold hover:bg-white transition-all"
+            className="px-6 sm:px-8 py-3 sm:py-4 bg-[#e0e0e0] rounded font-bold hover:bg-white transition-all text-center text-sm sm:text-base"
             style={{ color: "#1a1a1a" }}
           >
             get started
           </Link>
           <Link
             href="/playground?doc=developer/architecture"
-            className="px-8 py-4 border border-[#333333] rounded hover:border-[#e0e0e0] hover:bg-[#222222] transition-all"
+            className="px-6 sm:px-8 py-3 sm:py-4 border border-[#333333] rounded hover:border-[#e0e0e0] hover:bg-[#222222] transition-all text-center text-sm sm:text-base"
           >
             documentation
           </Link>
         </div>
 
-        <div className="text-[#555555] text-sm animate-bounce">↓ scroll</div>
+        <div className="text-[#555555] text-sm animate-bounce hidden sm:block">↓ scroll</div>
       </section>
 
       {/* the problem */}
-      <section className="py-24 px-6 border-t border-[#333333]">
+      <section className="py-16 sm:py-24 px-4 sm:px-6 border-t border-[#333333]">
         <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl font-bold mb-4 text-center">the problem</h2>
-          <p className="text-[#888888] text-center max-w-2xl mx-auto mb-12">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-center">the problem</h2>
+          <p className="text-[#888888] text-sm sm:text-base text-center max-w-2xl mx-auto mb-8 sm:mb-12 px-2">
             companies maintain separate sdks for every language. same functionality,
             different implementations. redundant effort, inconsistent behavior.
           </p>
@@ -82,28 +82,28 @@ export default function Home() {
       </section>
 
       {/* the solution */}
-      <section className="py-24 px-6 border-t border-[#333333] bg-[#151515]">
+      <section className="py-16 sm:py-24 px-4 sm:px-6 border-t border-[#333333] bg-[#151515]">
         <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl font-bold mb-4 text-center">the solution</h2>
-          <p className="text-[#888888] text-center max-w-2xl mx-auto mb-16">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-center">the solution</h2>
+          <p className="text-[#888888] text-sm sm:text-base text-center max-w-2xl mx-auto mb-10 sm:mb-16 px-2">
             write your library once in star. compile to webassembly. use from any language
             with a wasm runtime — python, javascript, rust, go, and more.
           </p>
 
-          <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 mb-16">
-            <div className="px-6 py-4 border border-[#333333] rounded-lg text-center">
-              <div className="text-2xl mb-2">✱</div>
-              <div className="text-sm text-[#888888]">write in star</div>
+          <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-8 mb-10 sm:mb-16">
+            <div className="px-5 sm:px-6 py-3 sm:py-4 border border-[#333333] rounded-lg text-center w-36 sm:w-auto">
+              <div className="text-xl sm:text-2xl mb-1 sm:mb-2">✱</div>
+              <div className="text-xs sm:text-sm text-[#888888]">write in star</div>
             </div>
-            <div className="text-[#555555] text-2xl">→</div>
-            <div className="px-6 py-4 border border-[#333333] rounded-lg text-center">
-              <div className="text-2xl mb-2">⬡</div>
-              <div className="text-sm text-[#888888]">compile to wasm</div>
+            <div className="text-[#555555] text-xl sm:text-2xl rotate-90 md:rotate-0">→</div>
+            <div className="px-5 sm:px-6 py-3 sm:py-4 border border-[#333333] rounded-lg text-center w-36 sm:w-auto">
+              <div className="text-xl sm:text-2xl mb-1 sm:mb-2">⬡</div>
+              <div className="text-xs sm:text-sm text-[#888888]">compile to wasm</div>
             </div>
-            <div className="text-[#555555] text-2xl">→</div>
-            <div className="px-6 py-4 border border-[#333333] rounded-lg text-center">
-              <div className="text-2xl mb-2">⊕</div>
-              <div className="text-sm text-[#888888]">use anywhere</div>
+            <div className="text-[#555555] text-xl sm:text-2xl rotate-90 md:rotate-0">→</div>
+            <div className="px-5 sm:px-6 py-3 sm:py-4 border border-[#333333] rounded-lg text-center w-36 sm:w-auto">
+              <div className="text-xl sm:text-2xl mb-1 sm:mb-2">⊕</div>
+              <div className="text-xs sm:text-sm text-[#888888]">use anywhere</div>
             </div>
           </div>
 
@@ -125,14 +125,14 @@ export default function Home() {
       </section>
 
       {/* code example */}
-      <section className="py-24 px-6 border-t border-[#333333]">
+      <section className="py-16 sm:py-24 px-4 sm:px-6 border-t border-[#333333]">
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold mb-4 text-center">simple syntax</h2>
-          <p className="text-[#888888] text-center mb-12">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-center">simple syntax</h2>
+          <p className="text-[#888888] text-sm sm:text-base text-center mb-8 sm:mb-12">
             familiar c-style syntax with modern conveniences
           </p>
 
-          <pre className="bg-[#0f0f0f] border border-[#333333] rounded-lg p-6 text-sm overflow-x-auto">
+          <pre className="bg-[#0f0f0f] border border-[#333333] rounded-lg p-4 sm:p-6 text-xs sm:text-sm overflow-x-auto">
             <code>{`struct User {
     name: string,
     email: string
@@ -156,24 +156,24 @@ fn main(): integer {
       </section>
 
       {/* cta */}
-      <section className="py-24 px-6 border-t border-[#333333] bg-[#151515]">
+      <section className="py-16 sm:py-24 px-4 sm:px-6 border-t border-[#333333] bg-[#151515]">
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-4">ready to try?</h2>
-          <p className="text-[#888888] mb-8">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-4">ready to try?</h2>
+          <p className="text-[#888888] text-sm sm:text-base mb-6 sm:mb-8">
             learn the language or dive into the internals
           </p>
 
-          <div className="flex justify-center gap-6">
+          <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-6 px-4 sm:px-0">
             <Link
               href="/playground?doc=quickstart/intro"
-              className="px-8 py-4 bg-[#e0e0e0] rounded font-bold hover:bg-white transition-all"
+              className="px-6 sm:px-8 py-3 sm:py-4 bg-[#e0e0e0] rounded font-bold hover:bg-white transition-all text-sm sm:text-base"
               style={{ color: "#1a1a1a" }}
             >
               quick start
             </Link>
             <Link
               href="/playground?doc=developer/architecture"
-              className="px-8 py-4 border border-[#333333] rounded hover:border-[#e0e0e0] hover:bg-[#222222] transition-all"
+              className="px-6 sm:px-8 py-3 sm:py-4 border border-[#333333] rounded hover:border-[#e0e0e0] hover:bg-[#222222] transition-all text-sm sm:text-base"
             >
               developer docs
             </Link>
