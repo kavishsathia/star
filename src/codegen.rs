@@ -1,6 +1,5 @@
-use std::f32::INFINITY;
-
 use crate::ast::{BinaryOp, Type, TypeKind, UnaryOp};
+use crate::error::CompilerError;
 use crate::ir::{IRExpr, IRExprKind, IRFunction, IRProgram, IRStmt, IRStruct};
 use wasm_encoder::{
     CodeSection, ConstExpr, ElementSection, Elements, EntityType, ExportSection, Function,
@@ -34,20 +33,22 @@ impl Codegen {
         Codegen { functions: vec![] }
     }
 
-    fn find_type_index(&self, callee_ty: &Type) -> u32 {
+    fn find_type_index(&self, callee_ty: &Type) -> Result<u32, CompilerError> {
         if let TypeKind::Function { params, returns } = &callee_ty.kind {
             for (i, func) in self.functions.iter().enumerate() {
                 if func.params == *params && func.returns == **returns {
-                    return Self::IMPORT_COUNT + i as u32;
+                    return Ok(Self::IMPORT_COUNT + i as u32);
                 }
             }
         }
-        panic!("Could not find matching function type for call_indirect")
+        Err(CompilerError::Codegen {
+            message: "Could not find matching function type for call_indirect".to_string(),
+        })
     }
 
     const IMPORT_COUNT: u32 = 18;
 
-    pub fn compile(&mut self, program: &IRProgram) -> Vec<u8> {
+    pub fn compile(&mut self, program: &IRProgram) -> Result<Vec<u8>, CompilerError> {
         self.functions = program.functions.clone();
         let mut module = Module::new();
 
@@ -90,7 +91,6 @@ impl Codegen {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
             let results: Vec<ValType> = vec![Self::type_to_valtype(&func.returns)];
-            println!("Function params: {:?}, results: {:?}", params, results);
             types.ty().function(params, results);
         }
         module.section(&types);
@@ -187,12 +187,12 @@ impl Codegen {
         let mut codes = CodeSection::new();
 
         for func in &program.functions {
-            self.compile_function(func, &mut codes, program);
+            self.compile_function(func, &mut codes, program)?;
         }
 
         module.section(&codes);
 
-        module.finish()
+        Ok(module.finish())
     }
 
     fn compile_function(
@@ -200,11 +200,9 @@ impl Codegen {
         func: &IRFunction,
         codes: &mut CodeSection,
         program: &IRProgram,
-    ) {
+    ) -> Result<(), CompilerError> {
         let mut locals: Vec<(u32, ValType)> = vec![];
         locals.extend(func.locals.iter().map(|t| (1, Self::type_to_valtype(t))));
-        println!("Locals: {:?}", locals.clone());
-        println!("Compiling function: {}", func.name);
         let mut f = Function::new(locals);
 
         if func.name == "main" {
@@ -249,15 +247,16 @@ impl Codegen {
         }
 
         for stmt in &func.body {
-            self.compile_stmt(stmt, &mut f);
+            self.compile_stmt(stmt, &mut f)?;
         }
 
         f.instruction(&Instruction::Call(15));
         f.instruction(&Instruction::End);
         codes.function(&f);
+        Ok(())
     }
 
-    fn compile_expr(&mut self, expr: &IRExpr, f: &mut Function, preallocated: bool) {
+    fn compile_expr(&mut self, expr: &IRExpr, f: &mut Function, preallocated: bool) -> Result<(), CompilerError> {
         match &expr.node {
             IRExprKind::Integer(n) => {
                 f.instruction(&Instruction::I64Const(*n));
@@ -309,7 +308,7 @@ impl Codegen {
                 right,
             } => {
                 if let IRExprKind::Local(index) = &left.node {
-                    self.compile_expr(right, f, false);
+                    self.compile_expr(right, f, false)?;
                     f.instruction(&Instruction::LocalTee(*index));
                     match &right.ty.kind {
                         TypeKind::Struct { .. } => {
@@ -327,9 +326,9 @@ impl Codegen {
                         _ => {}
                     }
                 } else if let IRExprKind::FieldReference { object, offset } = &left.node {
-                    self.compile_expr(left, f, false);
+                    self.compile_expr(left, f, false)?;
                     f.instruction(&Instruction::LocalTee(0));
-                    self.compile_expr(right, f, false);
+                    self.compile_expr(right, f, false)?;
                     f.instruction(&Instruction::I64Store(MemArg {
                         offset: 0,
                         align: 3,
@@ -337,9 +336,9 @@ impl Codegen {
                     }));
                     f.instruction(&Instruction::LocalGet(0));
                 } else {
-                    self.compile_expr(left, f, false);
+                    self.compile_expr(left, f, false)?;
                     f.instruction(&Instruction::LocalTee(0));
-                    self.compile_expr(right, f, false);
+                    self.compile_expr(right, f, false)?;
                     f.instruction(&Instruction::I64Store(MemArg {
                         offset: 0,
                         align: 3,
@@ -349,30 +348,32 @@ impl Codegen {
                 }
             }
             IRExprKind::Binary { left, op, right } => {
-                self.compile_expr(left, f, false);
-                self.compile_expr(right, f, false);
+                self.compile_expr(left, f, false)?;
+                self.compile_expr(right, f, false)?;
                 match op {
                     BinaryOp::Plus => {
                         if left.ty.kind == TypeKind::Integer {
                             f.instruction(&Instruction::I64Add);
-                            return;
+                            return Ok(());
                         } else if left.ty.kind == TypeKind::Float {
                             f.instruction(&Instruction::F64Add);
-                            return;
+                            return Ok(());
                         } else {
                             f.instruction(&Instruction::Call(6));
-                            return;
+                            return Ok(());
                         }
                     }
                     BinaryOp::Minus => {
                         if left.ty.kind == TypeKind::Integer {
                             f.instruction(&Instruction::I64Sub);
-                            return;
+                            return Ok(());
                         } else if left.ty.kind == TypeKind::Float {
                             f.instruction(&Instruction::F64Sub);
-                            return;
+                            return Ok(());
                         } else {
-                            panic!("Cannot subtract non-numeric types");
+                            return Err(CompilerError::Codegen {
+                                message: "Cannot subtract non-numeric types".to_string(),
+                            });
                         }
                     }
                     BinaryOp::Multiply => {
@@ -400,7 +401,7 @@ impl Codegen {
                             || matches!(left.ty.kind, TypeKind::List { .. })
                         {
                             f.instruction(&Instruction::Call(9));
-                            return;
+                            return Ok(());
                         }
                         if left.ty.kind == TypeKind::Float {
                             f.instruction(&Instruction::F64Eq);
@@ -415,7 +416,7 @@ impl Codegen {
                             f.instruction(&Instruction::Call(9));
                             f.instruction(&Instruction::I32Const(0));
                             f.instruction(&Instruction::I32Eqz);
-                            return;
+                            return Ok(());
                         }
                         if left.ty.kind == TypeKind::Float {
                             f.instruction(&Instruction::F64Ne);
@@ -472,27 +473,29 @@ impl Codegen {
                     BinaryOp::In => {
                         f.instruction(&Instruction::Call(8));
                     }
-                    _ => panic!("Unsupported binary operation"),
+                    _ => return Err(CompilerError::Codegen {
+                        message: format!("Unsupported binary operation: {:?}", op),
+                    }),
                 }
             }
             IRExprKind::Unary { op, expr } => match op {
                 UnaryOp::Minus => {
                     if expr.ty.kind == TypeKind::Float {
-                        self.compile_expr(expr, f, false);
+                        self.compile_expr(expr, f, false)?;
                         f.instruction(&Instruction::F64Neg);
                     } else {
                         f.instruction(&Instruction::I64Const(0));
-                        self.compile_expr(expr, f, false);
+                        self.compile_expr(expr, f, false)?;
                         f.instruction(&Instruction::I64Sub);
                     }
                 }
                 UnaryOp::Not => {
-                    self.compile_expr(expr, f, false);
+                    self.compile_expr(expr, f, false)?;
                     f.instruction(&Instruction::I32Eqz);
                 }
                 UnaryOp::Raise => {}
                 UnaryOp::Count => {
-                    self.compile_expr(expr, f, false);
+                    self.compile_expr(expr, f, false)?;
                     f.instruction(&Instruction::I32Const(4));
                     f.instruction(&Instruction::I32Sub);
                     f.instruction(&Instruction::I32Load(MemArg {
@@ -504,28 +507,30 @@ impl Codegen {
                 }
                 UnaryOp::Stringify => match expr.ty.kind {
                     TypeKind::Integer => {
-                        self.compile_expr(expr, f, false);
+                        self.compile_expr(expr, f, false)?;
                         f.instruction(&Instruction::Call(10));
                     }
                     TypeKind::String => {
-                        self.compile_expr(expr, f, false);
+                        self.compile_expr(expr, f, false)?;
                     }
                     TypeKind::Boolean => {
-                        self.compile_expr(expr, f, false);
+                        self.compile_expr(expr, f, false)?;
                         f.instruction(&Instruction::Call(11));
                     }
                     TypeKind::Float => {
-                        self.compile_expr(expr, f, false);
+                        self.compile_expr(expr, f, false)?;
                         f.instruction(&Instruction::Call(12));
                     }
-                    _ => panic!("Cannot stringify type {:?}", expr.ty),
+                    _ => return Err(CompilerError::Codegen {
+                        message: format!("Cannot stringify type {:?}", expr.ty),
+                    }),
                 },
             },
             IRExprKind::Call { callee, args } => {
-                let type_index = self.find_type_index(&callee.ty);
+                let type_index = self.find_type_index(&callee.ty)?;
                 f.instruction(&Instruction::I32Const(0));
                 f.instruction(&Instruction::I64Const(0));
-                self.compile_expr(callee, f, false);
+                self.compile_expr(callee, f, false)?;
                 f.instruction(&Instruction::LocalTee(1));
                 f.instruction(&Instruction::LocalGet(1));
                 f.instruction(&Instruction::I64Const(32));
@@ -534,7 +539,7 @@ impl Codegen {
                 f.instruction(&Instruction::LocalSet(0));
                 f.instruction(&Instruction::I32WrapI64);
                 for arg in args {
-                    self.compile_expr(arg, f, false);
+                    self.compile_expr(arg, f, false)?;
                 }
                 f.instruction(&Instruction::LocalGet(0));
 
@@ -554,7 +559,7 @@ impl Codegen {
                 f.instruction(&Instruction::LocalTee(0));
                 let mut offset = 0u64;
                 for field_expr in fields {
-                    self.compile_expr(field_expr, f, false);
+                    self.compile_expr(field_expr, f, false)?;
                     match field_expr.ty.kind {
                         TypeKind::Struct { .. } | TypeKind::List { .. } => {
                             f.instruction(&Instruction::I32Store(MemArg {
@@ -576,12 +581,11 @@ impl Codegen {
                 }
             }
             IRExprKind::Field { object, offset } => {
-                self.compile_expr(object, f, false);
+                self.compile_expr(object, f, false)?;
                 if matches!(
                     expr.ty.kind,
                     TypeKind::Struct { .. } | TypeKind::List { .. }
                 ) {
-                    println!("Loading struct/list field at offset {}", offset);
                     f.instruction(&Instruction::I32Load(MemArg {
                         offset: *offset as u64,
                         align: 2,
@@ -596,14 +600,14 @@ impl Codegen {
                 }
             }
             IRExprKind::FieldReference { object, offset } => {
-                self.compile_expr(object, f, false);
+                self.compile_expr(object, f, false)?;
                 f.instruction(&Instruction::I32Const(*offset as i32));
                 f.instruction(&Instruction::I32Add);
             }
             IRExprKind::IndexReference { list, index } => {
-                self.compile_expr(list, f, false);
+                self.compile_expr(list, f, false)?;
 
-                self.compile_expr(index, f, false);
+                self.compile_expr(index, f, false)?;
                 f.instruction(&Instruction::I64Const(8));
                 f.instruction(&Instruction::I64Mul);
                 f.instruction(&Instruction::I32WrapI64);
@@ -612,10 +616,10 @@ impl Codegen {
             }
 
             IRExprKind::Slice { expr, start, end } => {
-                self.compile_expr(expr, f, false);
-                self.compile_expr(start, f, false);
+                self.compile_expr(expr, f, false)?;
+                self.compile_expr(start, f, false)?;
                 f.instruction(&Instruction::I32WrapI64);
-                self.compile_expr(end, f, false);
+                self.compile_expr(end, f, false)?;
                 f.instruction(&Instruction::I32WrapI64);
                 f.instruction(&Instruction::Call(7));
             }
@@ -629,7 +633,7 @@ impl Codegen {
                     f.instruction(&Instruction::LocalGet(0));
                 }
                 for (i, element) in elements.iter().enumerate() {
-                    self.compile_expr(element, f, false);
+                    self.compile_expr(element, f, false)?;
                     f.instruction(&Instruction::I64Store(MemArg {
                         offset: (i * 8) as u64,
                         align: 3,
@@ -638,9 +642,9 @@ impl Codegen {
                 }
             }
             IRExprKind::Index { list, index } => {
-                self.compile_expr(list, f, false);
+                self.compile_expr(list, f, false)?;
 
-                self.compile_expr(index, f, false);
+                self.compile_expr(index, f, false)?;
                 f.instruction(&Instruction::I64Const(8));
                 f.instruction(&Instruction::I64Mul);
                 f.instruction(&Instruction::I32WrapI64);
@@ -656,7 +660,7 @@ impl Codegen {
             IRExprKind::Match { .. } => todo!(),
             IRExprKind::UnwrapError(_) => todo!(),
             IRExprKind::UnwrapNull(expr) => {
-                self.compile_expr(expr, f, false);
+                self.compile_expr(expr, f, false)?;
                 f.instruction(&Instruction::LocalTee(0));
                 f.instruction(&Instruction::I64Load(MemArg {
                     offset: 0,
@@ -679,17 +683,17 @@ impl Codegen {
                 f.instruction(&Instruction::End);
             }
         }
+        Ok(())
     }
 
-    fn compile_stmt(&mut self, stmt: &IRStmt, f: &mut Function) {
+    fn compile_stmt(&mut self, stmt: &IRStmt, f: &mut Function) -> Result<(), CompilerError> {
         match stmt {
             IRStmt::Expr(expr) => {
-                self.compile_expr(expr, f, false);
+                self.compile_expr(expr, f, false)?;
                 f.instruction(&Instruction::Drop);
             }
             IRStmt::LocalSet { index, value } => {
-                self.compile_expr(value, f, false);
-                // println!("Setting local {} ", index);
+                self.compile_expr(value, f, false)?;
                 f.instruction(&Instruction::LocalTee(*index));
                 match value.ty.kind {
                     TypeKind::Struct { .. } => {
@@ -709,7 +713,7 @@ impl Codegen {
             }
             IRStmt::Return(expr) => {
                 if let Some(expr) = expr {
-                    self.compile_expr(expr, f, false);
+                    self.compile_expr(expr, f, false)?;
                 } else {
                     f.instruction(&Instruction::I64Const(0));
                 }
@@ -727,15 +731,15 @@ impl Codegen {
                 then_block,
                 else_block,
             } => {
-                self.compile_expr(condition, f, false);
+                self.compile_expr(condition, f, false)?;
                 f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
                 for stmt in then_block {
-                    self.compile_stmt(stmt, f);
+                    self.compile_stmt(stmt, f)?;
                 }
                 if let Some(else_stmts) = else_block {
                     f.instruction(&Instruction::Else);
                     for stmt in else_stmts {
-                        self.compile_stmt(stmt, f);
+                        self.compile_stmt(stmt, f)?;
                     }
                 }
                 f.instruction(&Instruction::End);
@@ -743,11 +747,11 @@ impl Codegen {
             IRStmt::While { condition, body } => {
                 f.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty));
                 f.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
-                self.compile_expr(condition, f, false);
+                self.compile_expr(condition, f, false)?;
                 f.instruction(&Instruction::I32Eqz);
                 f.instruction(&Instruction::BrIf(1));
                 for stmt in body {
-                    self.compile_stmt(stmt, f);
+                    self.compile_stmt(stmt, f)?;
                 }
                 f.instruction(&Instruction::Br(0));
                 f.instruction(&Instruction::End);
@@ -760,21 +764,21 @@ impl Codegen {
                 body,
             } => {
                 f.instruction(&Instruction::Block(wasm_encoder::BlockType::Empty));
-                self.compile_stmt(init, f);
+                self.compile_stmt(init, f)?;
                 f.instruction(&Instruction::Loop(wasm_encoder::BlockType::Empty));
-                self.compile_expr(condition, f, false);
+                self.compile_expr(condition, f, false)?;
                 f.instruction(&Instruction::I32Eqz);
                 f.instruction(&Instruction::BrIf(1));
                 for stmt in body {
-                    self.compile_stmt(stmt, f);
+                    self.compile_stmt(stmt, f)?;
                 }
-                self.compile_stmt(update, f);
+                self.compile_stmt(update, f)?;
                 f.instruction(&Instruction::Br(0));
                 f.instruction(&Instruction::End);
                 f.instruction(&Instruction::End);
             }
             IRStmt::Print(expr) => {
-                self.compile_expr(expr, f, false);
+                self.compile_expr(expr, f, false)?;
                 f.instruction(&Instruction::Call(0));
             }
             IRStmt::Produce(_) => todo!(),
@@ -792,7 +796,9 @@ impl Codegen {
                         f.instruction(&Instruction::Call(3));
                         f.instruction(&Instruction::LocalTee(0));
                     }
-                    _ => panic!("Captures must be a local struct allocation"),
+                    _ => return Err(CompilerError::Codegen {
+                        message: "Captures must be a local struct allocation".to_string(),
+                    }),
                 }
                 f.instruction(&Instruction::I64ExtendI32U);
                 f.instruction(&Instruction::I32Const(*fn_index as i32));
@@ -806,8 +812,9 @@ impl Codegen {
                 f.instruction(&Instruction::I32Const(1));
                 f.instruction(&Instruction::Call(16));
                 f.instruction(&Instruction::LocalGet(0));
-                self.compile_expr(captures, f, true);
+                self.compile_expr(captures, f, true)?;
             }
         }
+        Ok(())
     }
 }

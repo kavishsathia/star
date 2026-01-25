@@ -1,9 +1,10 @@
 use super::Parser;
 use crate::ast::{Expr, Pattern, UnaryOp};
+use crate::error::CompilerError;
 use crate::lexer::Token;
 
 impl<'a> Parser<'a> {
-    pub fn parse_expression(&mut self, min_bp: u8) -> Expr {
+    pub fn parse_expression(&mut self, min_bp: u8) -> Result<Expr, CompilerError> {
         let mut left = match self.peek() {
             Some(Token::Null) => {
                 self.advance();
@@ -39,8 +40,8 @@ impl<'a> Parser<'a> {
             }
             Some(Token::LParenthesis) => {
                 self.advance();
-                let expr = self.parse_expression(0);
-                self.expect(&Token::RParenthesis);
+                let expr = self.parse_expression(0)?;
+                self.expect(&Token::RParenthesis)?;
                 expr
             }
             Some(Token::Not)
@@ -50,7 +51,7 @@ impl<'a> Parser<'a> {
             | Some(Token::Stringify) => {
                 let op = self.advance().unwrap();
                 let rbp = Parser::prefix_binding_power(&op).unwrap();
-                let expr = self.parse_expression(rbp);
+                let expr = self.parse_expression(rbp)?;
                 match op {
                     Token::Minus => Expr::Unary {
                         op: UnaryOp::Minus,
@@ -82,15 +83,15 @@ impl<'a> Parser<'a> {
                     self.advance();
                     Expr::List(vec![])
                 } else {
-                    let first = self.parse_expression(0);
+                    let first = self.parse_expression(0)?;
                     let mut elements = vec![first];
 
                     while self.check(&Token::Separator) {
                         self.advance();
-                        elements.push(self.parse_expression(0));
+                        elements.push(self.parse_expression(0)?);
                     }
 
-                    self.expect(&Token::RBrace);
+                    self.expect(&Token::RBrace)?;
                     Expr::List(elements)
                 }
             }
@@ -101,9 +102,11 @@ impl<'a> Parser<'a> {
                     self.advance();
                     name
                 } else {
-                    panic!("Expected identifier after 'new', found {:?}", self.peek());
+                    return Err(CompilerError::Parse {
+                        message: format!("Expected identifier after 'new', found {:?}", self.peek()),
+                    });
                 };
-                self.expect(&Token::LBrace);
+                self.expect(&Token::LBrace)?;
                 let mut fields = Vec::new();
                 while !self.check(&Token::RBrace) {
                     let field_name = if let Some(Token::Identifier) = self.peek() {
@@ -111,33 +114,34 @@ impl<'a> Parser<'a> {
                         self.advance();
                         field_name
                     } else {
-                        panic!(
-                            "Expected field name in struct init, found {:?}",
-                            self.peek()
-                        );
+                        return Err(CompilerError::Parse {
+                            message: format!("Expected field name in struct init, found {:?}", self.peek()),
+                        });
                     };
-                    self.expect(&Token::Colon);
-                    let value = self.parse_expression(0);
+                    self.expect(&Token::Colon)?;
+                    let value = self.parse_expression(0)?;
                     fields.push((field_name, value));
                     if self.check(&Token::Separator) {
                         self.advance();
                     }
                 }
-                self.expect(&Token::RBrace);
+                self.expect(&Token::RBrace)?;
                 Expr::New { name, fields }
             }
             Some(Token::Match) => {
                 self.advance();
-                let expr = Box::new(self.parse_expression(0));
-                self.expect(&Token::As);
+                let expr = Box::new(self.parse_expression(0)?);
+                self.expect(&Token::As)?;
                 let binding = if let Some(Token::Identifier) = self.peek() {
                     let name = self.current_slice.clone();
                     self.advance();
                     name
                 } else {
-                    panic!("Expected identifier after 'as', found {:?}", self.peek());
+                    return Err(CompilerError::Parse {
+                        message: format!("Expected identifier after 'as', found {:?}", self.peek()),
+                    });
                 };
-                self.expect(&Token::LBrace);
+                self.expect(&Token::LBrace)?;
                 let mut arms = Vec::new();
                 while !self.check(&Token::RBrace) {
                     let pattern = if self.check(&Token::Nullable) {
@@ -147,28 +151,34 @@ impl<'a> Parser<'a> {
                         self.advance();
                         Pattern::MatchError
                     } else if self.check(&Token::Identifier) {
-                        let ty = self.parse_type();
+                        let ty = self.parse_type()?;
                         Pattern::MatchType(ty)
                     } else {
-                        panic!("Expected pattern in match arm, found {:?}", self.peek());
+                        return Err(CompilerError::Parse {
+                            message: format!("Expected pattern in match arm, found {:?}", self.peek()),
+                        });
                     };
-                    self.expect(&Token::Colon);
-                    self.expect(&Token::LBrace);
+                    self.expect(&Token::Colon)?;
+                    self.expect(&Token::LBrace)?;
                     let mut body = Vec::new();
                     while !self.check(&Token::RBrace) {
-                        body.push(self.parse_statement(false));
+                        body.push(self.parse_statement(false)?);
                     }
-                    self.expect(&Token::RBrace);
+                    self.expect(&Token::RBrace)?;
                     arms.push((pattern, body));
                 }
-                self.expect(&Token::RBrace);
+                self.expect(&Token::RBrace)?;
                 Expr::Match {
                     expr,
                     binding,
                     arms,
                 }
             }
-            _ => panic!("Unexpected token: {:?}", self.peek()),
+            _ => {
+                return Err(CompilerError::Parse {
+                    message: format!("Unexpected token: {:?}", self.peek()),
+                });
+            }
         };
 
         loop {
@@ -182,9 +192,9 @@ impl<'a> Parser<'a> {
                     break;
                 }
 
-                let infix = Parser::token_to_binary_op(op);
+                let infix = Parser::token_to_binary_op(op)?;
                 self.advance();
-                let right = self.parse_expression(r_bp);
+                let right = self.parse_expression(r_bp)?;
                 left = Expr::Binary {
                     left: Box::new(left),
                     op: infix,
@@ -194,7 +204,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 let mut args: Vec<Expr> = Vec::new();
                 while !self.check(&Token::RParenthesis) {
-                    args.push(self.parse_expression(0));
+                    args.push(self.parse_expression(0)?);
                     if self.check(&Token::Separator) {
                         self.advance();
                     }
@@ -211,7 +221,9 @@ impl<'a> Parser<'a> {
                     self.advance();
                     field_name
                 } else {
-                    panic!("Expected identifier after '.', found {:?}", self.peek());
+                    return Err(CompilerError::Parse {
+                        message: format!("Expected identifier after '.', found {:?}", self.peek()),
+                    });
                 };
                 left = Expr::Field {
                     object: Box::new(left),
@@ -219,22 +231,24 @@ impl<'a> Parser<'a> {
                 };
             } else if *op == Token::LBracket {
                 self.advance();
-                let expr = self.parse_expression(0);
+                let expr = self.parse_expression(0)?;
                 if self.check(&Token::Colon) {
                     self.advance();
                     let end = if !self.check(&Token::RBracket) {
-                        Box::new(self.parse_expression(0))
+                        Box::new(self.parse_expression(0)?)
                     } else {
-                        panic!("Expected end expression in slice, found {:?}", self.peek());
+                        return Err(CompilerError::Parse {
+                            message: format!("Expected end expression in slice, found {:?}", self.peek()),
+                        });
                     };
-                    self.expect(&Token::RBracket);
+                    self.expect(&Token::RBracket)?;
                     left = Expr::Slice {
                         expr: Box::new(left),
                         start: Box::new(expr),
                         end: end,
                     };
                 } else {
-                    self.expect(&Token::RBracket);
+                    self.expect(&Token::RBracket)?;
                     left = Expr::Index {
                         object: Box::new(left),
                         key: Box::new(expr),
@@ -251,6 +265,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-        left
+        Ok(left)
     }
 }

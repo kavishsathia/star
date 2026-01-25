@@ -3,6 +3,7 @@ mod stmt;
 mod types;
 
 use crate::ast::{BinaryOp, Expr, Program, Statement, Type, TypeKind, UnaryOp};
+use crate::error::CompilerError;
 use crate::lexer::Token;
 use logos::Logos;
 
@@ -55,11 +56,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn expect(&mut self, expected: &Token) -> Token {
+    pub fn expect(&mut self, expected: &Token) -> Result<Token, CompilerError> {
         if self.check(expected) {
-            self.advance().unwrap()
+            Ok(self.advance().unwrap())
         } else {
-            panic!("Expected {:?}, found {:?}", expected, self.peek());
+            Err(CompilerError::Parse {
+                message: format!("Expected {:?}, found {:?}", expected, self.peek()),
+            })
         }
     }
 
@@ -67,12 +70,12 @@ impl<'a> Parser<'a> {
         self.current.is_none()
     }
 
-    pub fn parse_program(&mut self) -> Program {
+    pub fn parse_program(&mut self) -> Result<Program, CompilerError> {
         let mut stmts = Vec::new();
         while !self.at_end() {
-            stmts.push(self.parse_statement(true));
+            stmts.push(self.parse_statement(true)?);
         }
-        Program { statements: stmts }
+        Ok(Program { statements: stmts })
     }
 
     pub fn infix_binding_power(op: &Token) -> Option<(u8, u8)> {
@@ -108,30 +111,32 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn token_to_binary_op(token: &Token) -> BinaryOp {
+    fn token_to_binary_op(token: &Token) -> Result<BinaryOp, CompilerError> {
         match token {
-            Token::Plus => BinaryOp::Plus,
-            Token::Minus => BinaryOp::Minus,
-            Token::Multiply => BinaryOp::Multiply,
-            Token::Divide => BinaryOp::Divide,
-            Token::Power => BinaryOp::Power,
-            Token::And => BinaryOp::And,
-            Token::Or => BinaryOp::Or,
-            Token::Eq => BinaryOp::Eq,
-            Token::Neq => BinaryOp::Neq,
-            Token::Lt => BinaryOp::Lt,
-            Token::Gt => BinaryOp::Gt,
-            Token::Lte => BinaryOp::Lte,
-            Token::Gte => BinaryOp::Gte,
-            Token::BitwiseAnd => BinaryOp::BitwiseAnd,
-            Token::BitwiseOr => BinaryOp::BitwiseOr,
-            Token::Xor => BinaryOp::Xor,
-            Token::Sll => BinaryOp::Sll,
-            Token::Srl => BinaryOp::Srl,
-            Token::Is => BinaryOp::Is,
-            Token::In => BinaryOp::In,
-            Token::Modulo => BinaryOp::Modulo,
-            _ => panic!("Not a binary operator: {:?}", token),
+            Token::Plus => Ok(BinaryOp::Plus),
+            Token::Minus => Ok(BinaryOp::Minus),
+            Token::Multiply => Ok(BinaryOp::Multiply),
+            Token::Divide => Ok(BinaryOp::Divide),
+            Token::Power => Ok(BinaryOp::Power),
+            Token::And => Ok(BinaryOp::And),
+            Token::Or => Ok(BinaryOp::Or),
+            Token::Eq => Ok(BinaryOp::Eq),
+            Token::Neq => Ok(BinaryOp::Neq),
+            Token::Lt => Ok(BinaryOp::Lt),
+            Token::Gt => Ok(BinaryOp::Gt),
+            Token::Lte => Ok(BinaryOp::Lte),
+            Token::Gte => Ok(BinaryOp::Gte),
+            Token::BitwiseAnd => Ok(BinaryOp::BitwiseAnd),
+            Token::BitwiseOr => Ok(BinaryOp::BitwiseOr),
+            Token::Xor => Ok(BinaryOp::Xor),
+            Token::Sll => Ok(BinaryOp::Sll),
+            Token::Srl => Ok(BinaryOp::Srl),
+            Token::Is => Ok(BinaryOp::Is),
+            Token::In => Ok(BinaryOp::In),
+            Token::Modulo => Ok(BinaryOp::Modulo),
+            _ => Err(CompilerError::Parse {
+                message: format!("Not a binary operator: {:?}", token),
+            }),
         }
     }
 }

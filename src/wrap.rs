@@ -1,7 +1,7 @@
 use crate::aast::{AnalyzedExpr, AnalyzedStatement, Expr};
 use crate::ast::{BinaryOp, Type, TypeKind, UnaryOp};
+use crate::error::CompilerError;
 use crate::fast::FlattenedProgram;
-use core::panic;
 use std::collections::HashMap;
 
 pub struct Wrapper {
@@ -92,163 +92,165 @@ impl Wrapper {
         }
     }
 
-    fn wrap_expr(&mut self, expr: AnalyzedExpr) -> AnalyzedExpr {
+    fn wrap_expr(&mut self, expr: AnalyzedExpr) -> Result<AnalyzedExpr, CompilerError> {
         match expr.expr {
             Expr::Binary {
                 left,
                 op: BinaryOp::Is,
                 right,
             } => {
-                let wrapped_left = self.wrap_expr(*left);
-                let wrapped_right_inner = self.wrap_expr(*right);
+                let wrapped_left = self.wrap_expr(*left)?;
+                let wrapped_right_inner = self.wrap_expr(*right)?;
                 let wrapped_right = self.wrap_to_type(wrapped_right_inner, &wrapped_left.ty, false);
-                AnalyzedExpr {
+                Ok(AnalyzedExpr {
                     ty: expr.ty.clone(),
                     expr: Expr::Binary {
                         left: Box::new(wrapped_left),
                         op: BinaryOp::Is,
                         right: Box::new(wrapped_right),
                     },
-                }
+                })
             }
-            Expr::Binary { left, op, right } => AnalyzedExpr {
+            Expr::Binary { left, op, right } => Ok(AnalyzedExpr {
                 ty: expr.ty.clone(),
                 expr: Expr::Binary {
-                    left: Box::new(self.wrap_expr(*left)),
+                    left: Box::new(self.wrap_expr(*left)?),
                     op,
-                    right: Box::new(self.wrap_expr(*right)),
+                    right: Box::new(self.wrap_expr(*right)?),
                 },
-            },
+            }),
             Expr::Unary {
                 expr: inner,
                 op: UnaryOp::Raise,
             } => {
-                let wrapped_expr = self.wrap_expr(*inner);
+                let wrapped_expr = self.wrap_expr(*inner)?;
                 let ret_type = self.current_return_type.as_ref().unwrap().clone();
-                self.wrap_to_type(wrapped_expr, &ret_type, true)
+                Ok(self.wrap_to_type(wrapped_expr, &ret_type, true))
             }
-            Expr::Unary { expr: inner, op } => AnalyzedExpr {
+            Expr::Unary { expr: inner, op } => Ok(AnalyzedExpr {
                 ty: expr.ty.clone(),
                 expr: Expr::Unary {
-                    expr: Box::new(self.wrap_expr(*inner)),
+                    expr: Box::new(self.wrap_expr(*inner)?),
                     op,
                 },
-            },
+            }),
             Expr::New { name, fields } => {
-                let wrapped_fields: Vec<(String, AnalyzedExpr)> = fields
-                    .into_iter()
-                    .map(|(field_name, field_expr)| {
-                        let wrapped = self.wrap_expr(field_expr);
-                        if let Some(expected_type) = self.get_field_type(&name, &field_name) {
-                            (
-                                field_name,
-                                self.wrap_to_type(wrapped, &expected_type, false),
-                            )
-                        } else {
-                            (field_name, wrapped)
-                        }
-                    })
-                    .collect();
+                let mut wrapped_fields = Vec::new();
+                for (field_name, field_expr) in fields {
+                    let wrapped = self.wrap_expr(field_expr)?;
+                    if let Some(expected_type) = self.get_field_type(&name, &field_name) {
+                        wrapped_fields.push((field_name, self.wrap_to_type(wrapped, &expected_type, false)));
+                    } else {
+                        wrapped_fields.push((field_name, wrapped));
+                    }
+                }
 
-                AnalyzedExpr {
+                Ok(AnalyzedExpr {
                     ty: expr.ty.clone(),
                     expr: Expr::New {
                         name,
                         fields: wrapped_fields,
                     },
-                }
+                })
             }
             Expr::Call { callee, args } => match &callee.ty.kind {
                 TypeKind::Function { params, .. } => {
                     let params = params.clone();
-                    let wrapped_callee = self.wrap_expr(*callee);
-                    let wrapped_args: Vec<AnalyzedExpr> = args
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, arg_expr)| {
-                            let wrapped = self.wrap_expr(arg_expr);
-                            self.wrap_to_type(wrapped, &params[i], false)
-                        })
-                        .collect();
+                    let wrapped_callee = self.wrap_expr(*callee)?;
+                    let mut wrapped_args = Vec::new();
+                    for (i, arg_expr) in args.into_iter().enumerate() {
+                        let wrapped = self.wrap_expr(arg_expr)?;
+                        wrapped_args.push(self.wrap_to_type(wrapped, &params[i], false));
+                    }
 
-                    AnalyzedExpr {
+                    Ok(AnalyzedExpr {
                         ty: expr.ty.clone(),
                         expr: Expr::Call {
                             callee: Box::new(wrapped_callee),
                             args: wrapped_args,
                         },
-                    }
+                    })
                 }
-                _ => panic!("Callee is not a function type"),
+                _ => return Err(CompilerError::Codegen {
+                    message: "Callee is not a function type".to_string(),
+                }),
             },
-            Expr::Field { object, field } => AnalyzedExpr {
+            Expr::Field { object, field } => Ok(AnalyzedExpr {
                 ty: expr.ty.clone(),
                 expr: Expr::Field {
-                    object: Box::new(self.wrap_expr(*object)),
+                    object: Box::new(self.wrap_expr(*object)?),
                     field,
                 },
-            },
-            Expr::Index { object, key } => AnalyzedExpr {
+            }),
+            Expr::Index { object, key } => Ok(AnalyzedExpr {
                 ty: expr.ty.clone(),
                 expr: Expr::Index {
-                    object: Box::new(self.wrap_expr(*object)),
-                    key: Box::new(self.wrap_expr(*key)),
+                    object: Box::new(self.wrap_expr(*object)?),
+                    key: Box::new(self.wrap_expr(*key)?),
                 },
-            },
+            }),
             Expr::Slice {
                 expr: inner,
                 start,
                 end,
-            } => AnalyzedExpr {
+            } => Ok(AnalyzedExpr {
                 ty: expr.ty.clone(),
                 expr: Expr::Slice {
-                    expr: Box::new(self.wrap_expr(*inner)),
-                    start: Box::new(self.wrap_expr(*start)),
-                    end: Box::new(self.wrap_expr(*end)),
+                    expr: Box::new(self.wrap_expr(*inner)?),
+                    start: Box::new(self.wrap_expr(*start)?),
+                    end: Box::new(self.wrap_expr(*end)?),
                 },
-            },
-            Expr::List(elements) => AnalyzedExpr {
-                ty: expr.ty.clone(),
-                expr: Expr::List(elements.into_iter().map(|e| self.wrap_expr(e)).collect()),
-            },
+            }),
+            Expr::List(elements) => {
+                let mut wrapped = Vec::new();
+                for e in elements {
+                    wrapped.push(self.wrap_expr(e)?);
+                }
+                Ok(AnalyzedExpr {
+                    ty: expr.ty.clone(),
+                    expr: Expr::List(wrapped),
+                })
+            }
             Expr::Match {
                 expr: match_expr,
                 binding,
                 arms,
-            } => AnalyzedExpr {
+            } => {
+                let mut wrapped_arms = Vec::new();
+                for (pattern, stmts) in arms {
+                    let mut wrapped_stmts = Vec::new();
+                    for s in stmts {
+                        wrapped_stmts.push(self.wrap_stmt(s)?);
+                    }
+                    wrapped_arms.push((pattern, wrapped_stmts));
+                }
+                Ok(AnalyzedExpr {
+                    ty: expr.ty.clone(),
+                    expr: Expr::Match {
+                        expr: Box::new(self.wrap_expr(*match_expr)?),
+                        binding,
+                        arms: wrapped_arms,
+                    },
+                })
+            }
+            Expr::UnwrapNull(inner) => Ok(AnalyzedExpr {
                 ty: expr.ty.clone(),
-                expr: Expr::Match {
-                    expr: Box::new(self.wrap_expr(*match_expr)),
-                    binding,
-                    arms: arms
-                        .into_iter()
-                        .map(|(pattern, stmts)| {
-                            (
-                                pattern,
-                                stmts.into_iter().map(|s| self.wrap_stmt(s)).collect(),
-                            )
-                        })
-                        .collect(),
-                },
-            },
-            Expr::UnwrapNull(inner) => AnalyzedExpr {
+                expr: Expr::UnwrapNull(Box::new(self.wrap_expr(*inner)?)),
+            }),
+            Expr::UnwrapError(inner) => Ok(AnalyzedExpr {
                 ty: expr.ty.clone(),
-                expr: Expr::UnwrapNull(Box::new(self.wrap_expr(*inner))),
-            },
-            Expr::UnwrapError(inner) => AnalyzedExpr {
-                ty: expr.ty.clone(),
-                expr: Expr::UnwrapError(Box::new(self.wrap_expr(*inner))),
-            },
+                expr: Expr::UnwrapError(Box::new(self.wrap_expr(*inner)?)),
+            }),
             Expr::Null
             | Expr::Integer(_)
             | Expr::Float(_)
             | Expr::String(_)
             | Expr::Boolean(_)
-            | Expr::Identifier { .. } => expr,
+            | Expr::Identifier { .. } => Ok(expr),
         }
     }
 
-    fn wrap_stmt(&mut self, stmt: AnalyzedStatement) -> AnalyzedStatement {
+    fn wrap_stmt(&mut self, stmt: AnalyzedStatement) -> Result<AnalyzedStatement, CompilerError> {
         match stmt {
             AnalyzedStatement::Let {
                 name,
@@ -258,18 +260,18 @@ impl Wrapper {
                 index,
             } => {
                 let wrapped_value = if let Some(v) = value {
-                    let wrapped = self.wrap_expr(v);
+                    let wrapped = self.wrap_expr(v)?;
                     Some(self.wrap_to_type(wrapped, &ty, false))
                 } else {
                     None
                 };
-                AnalyzedStatement::Let {
+                Ok(AnalyzedStatement::Let {
                     name,
                     ty,
                     value: wrapped_value,
                     captured,
                     index,
-                }
+                })
             }
             AnalyzedStatement::Const {
                 name,
@@ -278,19 +280,19 @@ impl Wrapper {
                 captured,
                 index,
             } => {
-                let wrapped = self.wrap_expr(value);
+                let wrapped = self.wrap_expr(value)?;
                 let wrapped_value = self.wrap_to_type(wrapped, &ty, false);
-                AnalyzedStatement::Const {
+                Ok(AnalyzedStatement::Const {
                     name,
                     ty,
                     value: wrapped_value,
                     captured,
                     index,
-                }
+                })
             }
             AnalyzedStatement::Return(expr) => {
                 let wrapped_expr = if let Some(ret_expr) = expr {
-                    let wrapped = self.wrap_expr(ret_expr);
+                    let wrapped = self.wrap_expr(ret_expr)?;
                     let ret_type = self.current_return_type.as_ref().unwrap().clone();
                     Some(self.wrap_to_type(wrapped, &ret_type, false))
                 } else {
@@ -302,50 +304,77 @@ impl Wrapper {
                             errorable: false,
                         },
                     };
-                    let wrapped = self.wrap_expr(null_expr);
+                    let wrapped = self.wrap_expr(null_expr)?;
                     let ret_type = self.current_return_type.as_ref().unwrap().clone();
                     Some(self.wrap_to_type(wrapped, &ret_type, false))
                 };
-                AnalyzedStatement::Return(wrapped_expr)
+                Ok(AnalyzedStatement::Return(wrapped_expr))
             }
-            AnalyzedStatement::Expr(e) => AnalyzedStatement::Expr(self.wrap_expr(e)),
+            AnalyzedStatement::Expr(e) => Ok(AnalyzedStatement::Expr(self.wrap_expr(e)?)),
             AnalyzedStatement::If {
                 condition,
                 then_block,
                 else_block,
-            } => AnalyzedStatement::If {
-                condition: self.wrap_expr(condition),
-                then_block: then_block.into_iter().map(|s| self.wrap_stmt(s)).collect(),
-                else_block: else_block
-                    .map(|stmts| stmts.into_iter().map(|s| self.wrap_stmt(s)).collect()),
-            },
-            AnalyzedStatement::While { condition, body } => AnalyzedStatement::While {
-                condition: self.wrap_expr(condition),
-                body: body.into_iter().map(|s| self.wrap_stmt(s)).collect(),
-            },
+            } => {
+                let mut wrapped_then = Vec::new();
+                for s in then_block {
+                    wrapped_then.push(self.wrap_stmt(s)?);
+                }
+                let wrapped_else = match else_block {
+                    Some(stmts) => {
+                        let mut result = Vec::new();
+                        for s in stmts {
+                            result.push(self.wrap_stmt(s)?);
+                        }
+                        Some(result)
+                    }
+                    None => None,
+                };
+                Ok(AnalyzedStatement::If {
+                    condition: self.wrap_expr(condition)?,
+                    then_block: wrapped_then,
+                    else_block: wrapped_else,
+                })
+            }
+            AnalyzedStatement::While { condition, body } => {
+                let mut wrapped_body = Vec::new();
+                for s in body {
+                    wrapped_body.push(self.wrap_stmt(s)?);
+                }
+                Ok(AnalyzedStatement::While {
+                    condition: self.wrap_expr(condition)?,
+                    body: wrapped_body,
+                })
+            }
             AnalyzedStatement::For {
                 init,
                 condition,
                 update,
                 body,
-            } => AnalyzedStatement::For {
-                init: Box::new(self.wrap_stmt(*init)),
-                condition: self.wrap_expr(condition),
-                update: Box::new(self.wrap_stmt(*update)),
-                body: body.into_iter().map(|s| self.wrap_stmt(s)).collect(),
-            },
-            AnalyzedStatement::Print(e) => AnalyzedStatement::Print(self.wrap_expr(e)),
-            AnalyzedStatement::Produce(e) => AnalyzedStatement::Produce(self.wrap_expr(e)),
+            } => {
+                let mut wrapped_body = Vec::new();
+                for s in body {
+                    wrapped_body.push(self.wrap_stmt(s)?);
+                }
+                Ok(AnalyzedStatement::For {
+                    init: Box::new(self.wrap_stmt(*init)?),
+                    condition: self.wrap_expr(condition)?,
+                    update: Box::new(self.wrap_stmt(*update)?),
+                    body: wrapped_body,
+                })
+            }
+            AnalyzedStatement::Print(e) => Ok(AnalyzedStatement::Print(self.wrap_expr(e)?)),
+            AnalyzedStatement::Produce(e) => Ok(AnalyzedStatement::Produce(self.wrap_expr(e)?)),
             AnalyzedStatement::Break
             | AnalyzedStatement::Continue
             | AnalyzedStatement::Struct { .. }
             | AnalyzedStatement::Error { .. }
             | AnalyzedStatement::Function { .. }
-            | AnalyzedStatement::LocalClosure { .. } => stmt,
+            | AnalyzedStatement::LocalClosure { .. } => Ok(stmt),
         }
     }
 
-    fn wrap_function(&mut self, stmt: AnalyzedStatement) -> AnalyzedStatement {
+    fn wrap_function(&mut self, stmt: AnalyzedStatement) -> Result<AnalyzedStatement, CompilerError> {
         match stmt {
             AnalyzedStatement::Function {
                 name,
@@ -358,9 +387,12 @@ impl Wrapper {
                 locals,
             } => {
                 self.current_return_type = Some(returns.clone());
-                let wrapped_body: Vec<_> = body.into_iter().map(|s| self.wrap_stmt(s)).collect();
+                let mut wrapped_body = Vec::new();
+                for s in body {
+                    wrapped_body.push(self.wrap_stmt(s)?);
+                }
                 self.current_return_type = None;
-                AnalyzedStatement::Function {
+                Ok(AnalyzedStatement::Function {
                     name,
                     params,
                     returns,
@@ -369,20 +401,19 @@ impl Wrapper {
                     index,
                     fn_index,
                     locals,
-                }
+                })
             }
-            _ => stmt,
+            _ => Ok(stmt),
         }
     }
 
-    pub fn wrap_program(&mut self, program: FlattenedProgram) -> FlattenedProgram {
+    pub fn wrap_program(&mut self, program: FlattenedProgram) -> Result<FlattenedProgram, CompilerError> {
         self.build_lookups(&program);
 
-        let wrapped_functions: Vec<_> = program
-            .functions
-            .into_iter()
-            .map(|f| self.wrap_function(f))
-            .collect();
+        let mut wrapped_functions = Vec::new();
+        for f in program.functions {
+            wrapped_functions.push(self.wrap_function(f)?);
+        }
 
         let tagged_union_struct = (
             AnalyzedStatement::Struct {
@@ -413,9 +444,9 @@ impl Wrapper {
         let mut structs = vec![tagged_union_struct];
         structs.extend(program.structs);
 
-        FlattenedProgram {
+        Ok(FlattenedProgram {
             structs,
             functions: wrapped_functions,
-        }
+        })
     }
 }

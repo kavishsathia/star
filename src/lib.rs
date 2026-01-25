@@ -1,6 +1,7 @@
 mod aast;
 mod ast;
 mod codegen;
+pub mod error;
 mod fast;
 mod flatten;
 mod ir;
@@ -13,6 +14,7 @@ mod types;
 mod wrap;
 
 use codegen::Codegen;
+use error::CompilerError;
 use flatten::Flattener;
 use irgen::IRGenerator;
 use locals::LocalsIndexer;
@@ -21,30 +23,30 @@ use types::TypeChecker;
 use wrap::Wrapper;
 
 /// Compiles Star source code to WASM bytes.
-/// Returns Ok(wasm_bytes) on success, Err(error_message) on failure.
-pub fn compile(source: &str) -> Result<Vec<u8>, String> {
+/// Returns Ok(wasm_bytes) on success, Err(CompilerError) on failure.
+pub fn compile(source: &str) -> Result<Vec<u8>, CompilerError> {
     let mut parser = Parser::new(source);
-    let program = parser.parse_program();
+    let program = parser.parse_program()?;
 
     let mut type_checker = TypeChecker::new();
     let typed_program = type_checker
         .check_program(&program)
-        .map_err(|e| e.message)?;
+        .map_err(|e| CompilerError::Type { message: e.message })?;
 
     let mut indexer = LocalsIndexer::new();
-    let analyzed_program = indexer.analyze_program(&typed_program);
+    let analyzed_program = indexer.analyze_program(&typed_program)?;
 
     let mut flattener = Flattener::new();
     let flattened_program = flattener.flatten_program(&analyzed_program);
 
     let mut wrapper = Wrapper::new();
-    let wrapped_program = wrapper.wrap_program(flattened_program);
+    let wrapped_program = wrapper.wrap_program(flattened_program)?;
 
     let mut ir_generator = IRGenerator::new();
-    let ir_program = ir_generator.generate(&wrapped_program);
+    let ir_program = ir_generator.generate(&wrapped_program)?;
 
     let mut codegen = Codegen::new();
-    Ok(codegen.compile(&ir_program))
+    codegen.compile(&ir_program)
 }
 
 // WASM exports for browser
@@ -83,8 +85,8 @@ mod wasm_exports {
                 RESULT_BUFFER = bytes;
                 1
             },
-            Err(msg) => unsafe {
-                ERROR_BUFFER = msg;
+            Err(e) => unsafe {
+                ERROR_BUFFER = e.to_string();
                 0
             },
         }
