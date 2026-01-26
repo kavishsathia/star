@@ -306,10 +306,25 @@ impl IRGenerator {
             }
             Expr::New { name, fields } => {
                 let struct_index = self.lookup_struct(name)?;
+                let field_order: Vec<String> = self.structs[struct_index as usize]
+                    .fields
+                    .iter()
+                    .map(|(n, _)| n.clone())
+                    .collect();
+
+                // Reorder fields to match struct definition order (segregated order)
                 let mut ir_fields = Vec::new();
-                for (_, e) in fields {
-                    ir_fields.push(self.lower_expr(e)?);
+                for field_name in &field_order {
+                    let field_expr = fields
+                        .iter()
+                        .find(|(n, _)| n == field_name)
+                        .map(|(_, e)| e)
+                        .ok_or_else(|| CompilerError::IRGen {
+                            message: format!("field '{}' not found in struct instantiation", field_name),
+                        })?;
+                    ir_fields.push(self.lower_expr(field_expr)?);
                 }
+
                 Ok(IRExpr {
                     node: crate::ir::IRExprKind::New {
                         struct_index,

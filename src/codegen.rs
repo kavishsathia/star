@@ -33,6 +33,35 @@ impl Codegen {
         Codegen { functions: vec![] }
     }
 
+    fn emit_gc_retry<P, R, O>(
+        f: &mut Function,
+        prepare: P,
+        retrieve: R,
+        operation: O,
+    ) where
+        P: Fn(&mut Function),
+        R: Fn(&mut Function),
+        O: Fn(&mut Function),
+    {
+        prepare(f);
+
+        retrieve(f);
+        operation(f);
+
+        f.instruction(&Instruction::LocalTee(0));
+        f.instruction(&Instruction::I32Eqz);
+        f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
+
+        f.instruction(&Instruction::Call(17)); // gc
+        retrieve(f);
+        operation(f);
+        f.instruction(&Instruction::LocalSet(0));
+
+        f.instruction(&Instruction::End);
+
+        f.instruction(&Instruction::LocalGet(0));
+    }
+
     fn find_type_index(&self, callee_ty: &Type) -> Result<u32, CompilerError> {
         if let TypeKind::Function { params, returns } = &callee_ty.kind {
             for (i, func) in self.functions.iter().enumerate() {
@@ -268,20 +297,46 @@ impl Codegen {
                 f.instruction(&Instruction::I32Const(if *b { 1 } else { 0 }));
             }
             IRExprKind::String(s) => {
-                f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::I32Const(s.len() as i32));
-                f.instruction(&Instruction::Call(5));
-                f.instruction(&Instruction::LocalTee(0));
-                f.instruction(&Instruction::I32Eqz);
-                f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
-                f.instruction(&Instruction::Call(17));
-                f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::I32Const(s.len() as i32));
-                f.instruction(&Instruction::Call(5));
-                f.instruction(&Instruction::LocalSet(0));
-                f.instruction(&Instruction::End);
-
-                f.instruction(&Instruction::LocalGet(0));
+                let len = s.len() as i32;
+                Self::emit_gc_retry(
+                    f,
+                    |f| {
+                        // prepare: store params to scratchpad at memory 2, bytes 4-11
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Const(1)); // type = 1
+                        f.instruction(&Instruction::I32Store(MemArg {
+                            offset: 4,
+                            align: 2,
+                            memory_index: 2,
+                        }));
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Const(len));
+                        f.instruction(&Instruction::I32Store(MemArg {
+                            offset: 8,
+                            align: 2,
+                            memory_index: 2,
+                        }));
+                    },
+                    |f| {
+                        // retrieve: load params from scratchpad
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Load(MemArg {
+                            offset: 4,
+                            align: 2,
+                            memory_index: 2,
+                        }));
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Load(MemArg {
+                            offset: 8,
+                            align: 2,
+                            memory_index: 2,
+                        }));
+                    },
+                    |f| {
+                        // operation: call dalloc
+                        f.instruction(&Instruction::Call(5));
+                    },
+                );
 
                 for _ in 0..s.len() {
                     f.instruction(&Instruction::LocalGet(0));
@@ -359,7 +414,27 @@ impl Codegen {
                             f.instruction(&Instruction::F64Add);
                             return Ok(());
                         } else {
-                            f.instruction(&Instruction::Call(6));
+                            Self::emit_gc_retry(
+                                f,
+                                |f| {
+                                    // stack: [left, right] -> store both
+                                    f.instruction(&Instruction::LocalSet(0)); // right -> local0
+                                    f.instruction(&Instruction::I32Const(0));
+                                    f.instruction(&Instruction::LocalGet(0));
+                                    f.instruction(&Instruction::I32Store(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                                    f.instruction(&Instruction::LocalSet(0)); // left -> local0
+                                    f.instruction(&Instruction::I32Const(0));
+                                    f.instruction(&Instruction::LocalGet(0));
+                                    f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                                },
+                                |f| {
+                                    f.instruction(&Instruction::I32Const(0));
+                                    f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                                    f.instruction(&Instruction::I32Const(0));
+                                    f.instruction(&Instruction::I32Load(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                                },
+                                |f| { f.instruction(&Instruction::Call(6)); },
+                            );
                             return Ok(());
                         }
                     }
@@ -493,7 +568,10 @@ impl Codegen {
                     self.compile_expr(expr, f, false)?;
                     f.instruction(&Instruction::I32Eqz);
                 }
-                UnaryOp::Raise => {}
+                UnaryOp::Raise => {
+                    self.compile_expr(expr, f, false)?;
+                    f.instruction(&Instruction::Return);
+                }
                 UnaryOp::Count => {
                     self.compile_expr(expr, f, false)?;
                     f.instruction(&Instruction::I32Const(4));
@@ -508,18 +586,57 @@ impl Codegen {
                 UnaryOp::Stringify => match expr.ty.kind {
                     TypeKind::Integer => {
                         self.compile_expr(expr, f, false)?;
-                        f.instruction(&Instruction::Call(10));
+                        Self::emit_gc_retry(
+                            f,
+                            |f| {
+                                f.instruction(&Instruction::LocalSet(1)); // i64 needs local1
+                                f.instruction(&Instruction::I32Const(0));
+                                f.instruction(&Instruction::LocalGet(1));
+                                f.instruction(&Instruction::I64Store(MemArg { offset: 4, align: 3, memory_index: 2 }));
+                            },
+                            |f| {
+                                f.instruction(&Instruction::I32Const(0));
+                                f.instruction(&Instruction::I64Load(MemArg { offset: 4, align: 3, memory_index: 2 }));
+                            },
+                            |f| { f.instruction(&Instruction::Call(10)); },
+                        );
                     }
                     TypeKind::String => {
                         self.compile_expr(expr, f, false)?;
                     }
                     TypeKind::Boolean => {
                         self.compile_expr(expr, f, false)?;
-                        f.instruction(&Instruction::Call(11));
+                        Self::emit_gc_retry(
+                            f,
+                            |f| {
+                                f.instruction(&Instruction::LocalSet(0));
+                                f.instruction(&Instruction::I32Const(0));
+                                f.instruction(&Instruction::LocalGet(0));
+                                f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                            },
+                            |f| {
+                                f.instruction(&Instruction::I32Const(0));
+                                f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                            },
+                            |f| { f.instruction(&Instruction::Call(11)); },
+                        );
                     }
                     TypeKind::Float => {
                         self.compile_expr(expr, f, false)?;
-                        f.instruction(&Instruction::Call(12));
+                        Self::emit_gc_retry(
+                            f,
+                            |f| {
+                                f.instruction(&Instruction::LocalSet(1)); // f64 needs local1
+                                f.instruction(&Instruction::I32Const(0));
+                                f.instruction(&Instruction::LocalGet(1));
+                                f.instruction(&Instruction::F64Store(MemArg { offset: 4, align: 3, memory_index: 2 }));
+                            },
+                            |f| {
+                                f.instruction(&Instruction::I32Const(0));
+                                f.instruction(&Instruction::F64Load(MemArg { offset: 4, align: 3, memory_index: 2 }));
+                            },
+                            |f| { f.instruction(&Instruction::Call(12)); },
+                        );
                     }
                     _ => return Err(CompilerError::Codegen {
                         message: format!("Cannot stringify type {:?}", expr.ty),
@@ -553,8 +670,20 @@ impl Codegen {
                 fields,
             } => {
                 if !preallocated {
-                    f.instruction(&Instruction::I32Const(*struct_index as i32));
-                    f.instruction(&Instruction::Call(3));
+                    let idx = *struct_index as i32;
+                    Self::emit_gc_retry(
+                        f,
+                        |f| {
+                            f.instruction(&Instruction::I32Const(0));
+                            f.instruction(&Instruction::I32Const(idx));
+                            f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        },
+                        |f| {
+                            f.instruction(&Instruction::I32Const(0));
+                            f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        },
+                        |f| { f.instruction(&Instruction::Call(3)); },
+                    );
                 }
                 f.instruction(&Instruction::LocalTee(0));
                 let mut offset = 0u64;
@@ -621,13 +750,55 @@ impl Codegen {
                 f.instruction(&Instruction::I32WrapI64);
                 self.compile_expr(end, f, false)?;
                 f.instruction(&Instruction::I32WrapI64);
-                f.instruction(&Instruction::Call(7));
+                Self::emit_gc_retry(
+                    f,
+                    |f| {
+                        // stack: [ptr, start, end] -> store all 3
+                        f.instruction(&Instruction::LocalSet(0)); // end -> local0
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::LocalGet(0));
+                        f.instruction(&Instruction::I32Store(MemArg { offset: 12, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::LocalSet(0)); // start -> local0
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::LocalGet(0));
+                        f.instruction(&Instruction::I32Store(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::LocalSet(0)); // ptr -> local0
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::LocalGet(0));
+                        f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                    },
+                    |f| {
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Load(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Load(MemArg { offset: 12, align: 2, memory_index: 2 }));
+                    },
+                    |f| { f.instruction(&Instruction::Call(7)); },
+                );
             }
 
             IRExprKind::List(elements) => {
-                f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::I32Const(elements.len() as i32));
-                f.instruction(&Instruction::Call(5));
+                let len = elements.len() as i32;
+                Self::emit_gc_retry(
+                    f,
+                    |f| {
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Const(1));
+                        f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Const(len));
+                        f.instruction(&Instruction::I32Store(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                    },
+                    |f| {
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Const(0));
+                        f.instruction(&Instruction::I32Load(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                    },
+                    |f| { f.instruction(&Instruction::Call(5)); },
+                );
                 f.instruction(&Instruction::LocalTee(0));
                 for (_, _) in elements.iter().enumerate() {
                     f.instruction(&Instruction::LocalGet(0));
@@ -792,8 +963,20 @@ impl Codegen {
                         struct_index,
                         fields: _,
                     } => {
-                        f.instruction(&Instruction::I32Const(*struct_index as i32));
-                        f.instruction(&Instruction::Call(3));
+                        let idx = *struct_index as i32;
+                        Self::emit_gc_retry(
+                            f,
+                            |f| {
+                                f.instruction(&Instruction::I32Const(0));
+                                f.instruction(&Instruction::I32Const(idx));
+                                f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                            },
+                            |f| {
+                                f.instruction(&Instruction::I32Const(0));
+                                f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                            },
+                            |f| { f.instruction(&Instruction::Call(3)); },
+                        );
                         f.instruction(&Instruction::LocalTee(0));
                     }
                     _ => return Err(CompilerError::Codegen {

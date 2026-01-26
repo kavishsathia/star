@@ -250,7 +250,22 @@ impl TypeChecker {
 
             ast::Statement::Error { name } => {
                 self.errors.insert(name.clone());
-                Ok(TypedStatement::Error { name: name.clone() })
+                // Treat as a struct with a single `message: String` field
+                let fields = vec![(
+                    "message".to_string(),
+                    Type {
+                        kind: TypeKind::String,
+                        nullable: false,
+                        errorable: false,
+                    },
+                )];
+                self.structs
+                    .insert(name.clone(), (fields.clone(), self.next_struct_index));
+                self.next_struct_index += 1;
+                Ok(TypedStatement::Struct {
+                    name: name.clone(),
+                    fields,
+                })
             }
 
             ast::Statement::Produce(expr) => {

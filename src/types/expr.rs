@@ -586,11 +586,23 @@ impl TypeChecker {
                 }
                 Ok(expr_ty.clone())
             }
-            ast::UnaryOp::Raise => Ok(Type {
-                kind: expr_ty.kind.clone(),
-                nullable: expr_ty.nullable,
-                errorable: true,
-            }),
+            ast::UnaryOp::Raise => {
+                if let TypeKind::Struct { name } = &expr_ty.kind {
+                    if !self.errors.contains(name) {
+                        return Err(TypeError::new(&format!(
+                            "'{}' is not an error type",
+                            name
+                        )));
+                    }
+                } else {
+                    return Err(TypeError::new("Can only raise error types"));
+                }
+                Ok(Type {
+                    kind: expr_ty.kind.clone(),
+                    nullable: expr_ty.nullable,
+                    errorable: true,
+                })
+            }
             &ast::UnaryOp::Count => {
                 if let TypeKind::List { .. } = &expr_ty.kind {
                     if expr_ty.nullable || expr_ty.errorable {

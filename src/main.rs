@@ -25,12 +25,11 @@ use wrap::Wrapper;
 
 fn main() {
     let source = r#"
-
+error Hello;
 fn main(): integer {
-fn fib(n: integer): integer {
-return n;
-}
-    print $(fib(5));
+    fn maybe(): integer! {
+        raise new Hello { message: "An error occurred" };
+    }
 return 0;
 }
     "#;

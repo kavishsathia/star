@@ -20,10 +20,10 @@ extern "C" {
 const TYPE_TABLE_INDEX: u32 = 12;
 const TYPE_TABLE_RECORD_SIZE: u32 = 16;
 
-const STACK_POINTER: u32 = 12;
-const FRAME_POINTER: u32 = 12;
-const STACK_POINTER_ADDR: u32 = 4;
-const FRAME_POINTER_ADDR: u32 = 8;
+const STACK_POINTER: u32 = 24;
+const FRAME_POINTER: u32 = 24;
+const STACK_POINTER_ADDR: u32 = 16;
+const FRAME_POINTER_ADDR: u32 = 20;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
