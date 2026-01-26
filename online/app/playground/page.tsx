@@ -3,6 +3,25 @@
 import { Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import mermaid from "mermaid";
+
+mermaid.initialize({ startOnLoad: false, theme: "dark" });
+
+function Mermaid({ chart }: { chart: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      const id = `mermaid-${Math.random().toString(36).slice(2)}`;
+      mermaid.render(id, chart).then(({ svg }) => {
+        if (ref.current) ref.current.innerHTML = svg;
+      });
+    }
+  }, [chart]);
+
+  return <div ref={ref} className="my-4" />;
+}
 
 const docs = {
   quickstart: [
@@ -13,12 +32,80 @@ const docs = {
     { slug: "structs", title: "structs" },
   ],
   developer: [
+    { slug: "intro", title: "introduction" },
     { slug: "architecture", title: "architecture" },
     { slug: "parser", title: "parser" },
     { slug: "typechecker", title: "type checker" },
     { slug: "codegen", title: "code generation" },
     { slug: "gc", title: "garbage collection" },
   ],
+};
+
+const demos: Record<string, string> = {
+  "quickstart/intro": `fn main(): integer {
+    print "hello";
+    print $(10 + 5);
+    return 0;
+}`,
+  "quickstart/syntax": `fn main(): integer {
+    let x: integer = 42;
+    if x > 20 {
+        print "big";
+    } else {
+        print "small";
+    }
+    let i: integer = 0;
+    while i < 3 {
+        print $i;
+        i = i + 1;
+    }
+    return 0;
+}`,
+  "quickstart/types": `error MyError;
+
+fn main(): integer {
+    let nums: {integer} = {1, 2, 3};
+    print $(nums[0]);
+
+    fn maybe(): integer? {
+        return 42;
+    }
+    print $(maybe()??);
+
+    return 0;
+}`,
+  "quickstart/functions": `fn main(): integer {
+    let x: integer = 10;
+
+    fn add_x(y: integer): integer {
+        return x + y;
+    }
+
+    fn factorial(n: integer): integer {
+        if n <= 1 {
+            return 1;
+        }
+        return n * factorial(n - 1);
+    }
+
+    print $(add_x(5));
+    print $(factorial(5));
+    return 0;
+}`,
+  "quickstart/structs": `struct Person {
+    name: string,
+    age: integer
+}
+
+fn main(): integer {
+    let p: Person = new Person {
+        name: "alice",
+        age: 30
+    };
+    print p.name;
+    print $p.age;
+    return 0;
+}`,
 };
 
 interface CompilerExports {
@@ -111,12 +198,16 @@ fn main(): integer {
     loadWasm();
   }, []);
 
-  // Load docs
+  // Load docs and demo code
   useEffect(() => {
     fetch(`/docs/${docPath}.md`)
       .then((r) => (r.ok ? r.text() : "# not found\n\nthis doc doesn't exist yet."))
       .then((md) => setDocContent(md))
       .catch(() => setDocContent("# error\n\nfailed to load doc."));
+
+    if (demos[docPath]) {
+      setCode(demos[docPath]);
+    }
   }, [docPath]);
 
   const handleRun = useCallback(async () => {
@@ -220,7 +311,7 @@ fn main(): integer {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <Link href="/" className="flex items-center gap-1 text-lg font-bold">
+          <Link href="/" className="flex items-center gap-1 text-lg font-bold font-mono">
             <span>.</span>
             <span>✱</span>
             <span className="hidden sm:inline">lang</span>
@@ -303,8 +394,34 @@ fn main(): integer {
 
         {/* docs panel - hidden on mobile when code tab active */}
         <div className={`flex-1 overflow-y-auto p-4 sm:p-6 border-r border-[#333333] ${activeTab === "code" ? "hidden lg:block" : ""}`}>
-          <article className="prose prose-invert max-w-none">
-            <div dangerouslySetInnerHTML={{ __html: parseMarkdown(docContent) }} />
+          <article className="max-w-none">
+            <ReactMarkdown
+              components={{
+                h1: ({ children }) => <h1 className="text-2xl font-bold mb-4">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-xl font-bold mt-8 mb-3">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-lg font-bold mt-6 mb-2">{children}</h3>,
+                p: ({ children }) => <p className="my-3">{children}</p>,
+                code: ({ className, children }) => {
+                  if (className === "language-mermaid") {
+                    return <Mermaid chart={String(children)} />;
+                  }
+                  return <code>{children}</code>;
+                },
+                pre: ({ children }) => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const child = children as any;
+                  if (child?.props?.className === "language-mermaid") {
+                    return <>{children}</>;
+                  }
+                  return <pre className="p-4 my-4 overflow-x-auto">{children}</pre>;
+                },
+                ul: ({ children }) => <ul className="my-3 ml-4">{children}</ul>,
+                ol: ({ children }) => <ol className="my-3 ml-4">{children}</ol>,
+                li: ({ children }) => <li className="my-1">• {children}</li>,
+              }}
+            >
+              {docContent}
+            </ReactMarkdown>
           </article>
         </div>
 
@@ -338,18 +455,3 @@ fn main(): integer {
   );
 }
 
-function parseMarkdown(md: string): string {
-  return md
-    .replace(/^### (.*$)/gm, '<h3 class="text-lg font-bold mt-6 mb-2">$1</h3>')
-    .replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mt-8 mb-3">$1</h2>')
-    .replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mb-4">$1</h1>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code class="bg-[#333333] px-1 rounded text-sm">$1</code>')
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="bg-[#0a0a0a] p-4 rounded my-4 overflow-x-auto"><code>$2</code></pre>')
-    .replace(/^\- (.*$)/gm, '<li class="ml-4">• $1</li>')
-    .replace(/^\d+\. (.*$)/gm, '<li class="ml-4">$1</li>')
-    .replace(/\n\n/g, '</p><p class="my-3">')
-    .replace(/^(?!<[h|p|l|u|o|c|s|e|d])/gm, '')
-    .replace(/^\s*$/gm, '');
-}
