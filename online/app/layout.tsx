@@ -11,6 +11,9 @@ const spaceMono = Space_Mono({
 export const metadata: Metadata = {
   title: ".*lang",
   description: "A programming language that compiles to WebAssembly",
+  icons: {
+    icon: "/small.png",
+  },
 };
 
 export default function RootLayout({
