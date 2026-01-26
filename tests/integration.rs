@@ -59,25 +59,21 @@ fn run_program(source: &str) -> Result<Vec<String>, String> {
     let output_clone = output.clone();
 
     linker
-        .func_wrap(
-            "env",
-            "print",
-            move |caller: Caller<'_, ()>, ptr: i32| {
-                let data = lists.data(&caller);
-                let ptr = ptr as usize;
-                let length = u32::from_le_bytes(data[ptr - 4..ptr].try_into().unwrap());
+        .func_wrap("env", "print", move |caller: Caller<'_, ()>, ptr: i32| {
+            let data = lists.data(&caller);
+            let ptr = ptr as usize;
+            let length = u32::from_le_bytes(data[ptr - 4..ptr].try_into().unwrap());
 
-                let mut string: Vec<u8> = Vec::with_capacity(length as usize);
-                for i in 0..length {
-                    let start = ptr + (i as usize) * 8;
-                    string.push(data[start]);
-                }
+            let mut string: Vec<u8> = Vec::with_capacity(length as usize);
+            for i in 0..length {
+                let start = ptr + (i as usize) * 8;
+                string.push(data[start]);
+            }
 
-                let decoded = String::from_utf8(string).unwrap_or_else(|_| "<invalid utf8>".into());
-                output_clone.lock().unwrap().push(decoded);
-                Ok(())
-            },
-        )
+            let decoded = String::from_utf8(string).unwrap_or_else(|_| "<invalid utf8>".into());
+            output_clone.lock().unwrap().push(decoded);
+            Ok(())
+        })
         .map_err(|e| e.to_string())?;
 
     let module = Module::new(&engine, &wasm_bytes).map_err(|e| e.to_string())?;
@@ -89,41 +85,68 @@ fn run_program(source: &str) -> Result<Vec<String>, String> {
         .get_typed_func::<(i32, i64, i32), i64>(&mut store, "main")
         .map_err(|e| e.to_string())?;
 
-    main.call(&mut store, (0, 0, 0)).map_err(|e| e.to_string())?;
+    main.call(&mut store, (0, 0, 0))
+        .map_err(|e| e.to_string())?;
 
     let result = output.lock().unwrap().clone();
     Ok(result)
 }
 
-fn parse_test_file(content: &str) -> (String, Vec<String>) {
+#[derive(Debug)]
+struct TestExpectation {
+    output: Vec<String>,
+    expect_panic: bool,
+}
+
+fn parse_test_file(content: &str) -> (String, TestExpectation) {
     let mut expected = Vec::new();
     let mut source_lines = Vec::new();
+    let mut expect_panic = false;
 
     for line in content.lines() {
         if line.starts_with("// expect: ") {
             expected.push(line.trim_start_matches("// expect: ").to_string());
+        } else if line.starts_with("// expect_panic") {
+            expect_panic = true;
         } else {
             source_lines.push(line);
         }
     }
 
-    (source_lines.join("\n"), expected)
+    (
+        source_lines.join("\n"),
+        TestExpectation {
+            output: expected,
+            expect_panic,
+        },
+    )
 }
 
 fn run_test_file(path: &Path) -> Result<(), String> {
     let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let (source, expected) = parse_test_file(&content);
+    let (source, expectation) = parse_test_file(&content);
 
-    let actual = run_program(&source)?;
-
-    if actual != expected {
-        return Err(format!(
-            "Output mismatch:\n  Expected: {:?}\n  Actual:   {:?}",
-            expected, actual
-        ));
+    match run_program(&source) {
+        Ok(actual) => {
+            if expectation.expect_panic {
+                return Err("Expected panic but program succeeded".to_string());
+            }
+            if actual != expectation.output {
+                return Err(format!(
+                    "Output mismatch:\n  Expected: {:?}\n  Actual:   {:?}",
+                    expectation.output, actual
+                ));
+            }
+            Ok(())
+        }
+        Err(e) => {
+            if expectation.expect_panic {
+                Ok(())
+            } else {
+                Err(e)
+            }
+        }
     }
-
-    Ok(())
 }
 
 #[test]
