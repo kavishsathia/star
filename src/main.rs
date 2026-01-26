@@ -27,12 +27,13 @@ fn main() {
     let source = r#"
 error Hello;
 fn main(): integer {
-    fn maybe(): integer! {
-        raise new Hello { message: "An error occurred" };
+    fn maybe(): integer?! {
+        // raise new Hello { message: "An error occurred" };
         // return 42;
+        return null;
     }
 
-    print $maybe()!!;
+    maybe()??;
 return 0;
 }
     "#;

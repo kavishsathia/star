@@ -954,9 +954,15 @@ impl Codegen {
                 }));
                 f.instruction(&Instruction::I64Const(1));
                 f.instruction(&Instruction::I64Eq);
-                f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
-                    ValType::I64,
-                )));
+                if !expr.ty.nullable && !expr.ty.errorable {
+                    f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+                        ValType::I64,
+                    )));
+                } else {
+                    f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+                        ValType::I32,
+                    )));
+                }
                 f.instruction(&Instruction::Unreachable);
                 f.instruction(&Instruction::Else);
                 f.instruction(&Instruction::LocalGet(0));
@@ -980,9 +986,15 @@ impl Codegen {
                 }));
                 f.instruction(&Instruction::I64Const(0));
                 f.instruction(&Instruction::I64Eq);
-                f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
-                    ValType::I64,
-                )));
+                if !expr.ty.nullable && !expr.ty.errorable {
+                    f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+                        ValType::I64,
+                    )));
+                } else {
+                    f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+                        ValType::I32,
+                    )));
+                }
                 f.instruction(&Instruction::Unreachable);
                 f.instruction(&Instruction::Else);
                 f.instruction(&Instruction::LocalGet(0));
