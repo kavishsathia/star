@@ -41,7 +41,7 @@ jobs:
         run: cargo test --test integration
 
       - name: Build compiler to WASM
-        run: cargo build --lib --target wasm32-unknown-unknown --release
+        run: cargo build --lib --target wasm32-unknown-unknown --release --no-default-features
 
       - name: Copy WASM files to online/public/wasm
         run: |
