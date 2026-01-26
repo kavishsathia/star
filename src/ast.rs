@@ -32,7 +32,6 @@ pub enum BinaryOp {
 pub enum UnaryOp {
     Not,
     Minus,
-    Raise,
     Count,
     Stringify,
 }
@@ -169,4 +168,5 @@ pub enum Statement {
     },
     Print(Expr),
     Produce(Expr),
+    Raise(Expr),
 }

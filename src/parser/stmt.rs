@@ -103,6 +103,13 @@ impl<'a> Parser<'a> {
         Ok(Statement::Produce(expr))
     }
 
+    fn parse_raise_statement(&mut self) -> Result<Statement, CompilerError> {
+        self.expect(&Token::Raise)?;
+        let expr = self.parse_expression(0)?;
+        self.expect(&Token::Semicolon)?;
+        Ok(Statement::Raise(expr))
+    }
+
     fn parse_if_statement(&mut self) -> Result<Statement, CompilerError> {
         self.expect(&Token::If)?;
         let condition = self.parse_expression(0)?;
@@ -291,6 +298,7 @@ impl<'a> Parser<'a> {
             Some(Token::Fn) => self.parse_function_definition(),
             Some(Token::Print) => self.parse_print_statement(),
             Some(Token::Produce) => self.parse_produce_statement(),
+            Some(Token::Raise) => self.parse_raise_statement(),
             _ if !self.at_end() => self.parse_expression_statement(),
             _ => Err(CompilerError::Parse {
                 message: format!("Unexpected token in statement: {:?}", self.peek()),

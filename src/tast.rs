@@ -105,4 +105,5 @@ pub enum TypedStatement {
     },
     Print(TypedExpr),
     Produce(TypedExpr),
+    Raise(TypedExpr),
 }

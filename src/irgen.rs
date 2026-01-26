@@ -201,6 +201,10 @@ impl IRGenerator {
                 let ir_expr = self.lower_expr(expr)?;
                 Ok(IRStmt::Produce(ir_expr))
             }
+            AnalyzedStatement::Raise(expr) => {
+                let ir_expr = self.lower_expr(expr)?;
+                Ok(IRStmt::Raise(ir_expr))
+            }
             AnalyzedStatement::Function { .. } => {
                 Err(CompilerError::IRGen {
                     message: "unexpected nested function after flattening".to_string(),

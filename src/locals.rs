@@ -303,6 +303,7 @@ impl LocalsIndexer {
                 fields: fields.clone(),
             }),
             TypedStatement::Error { name } => Ok(AnalyzedStatement::Error { name: name.clone() }),
+            TypedStatement::Raise(expr) => Ok(AnalyzedStatement::Raise(self.analyze_expr(expr)?)),
         }
     }
 

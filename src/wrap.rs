@@ -119,14 +119,6 @@ impl Wrapper {
                     right: Box::new(self.wrap_expr(*right)?),
                 },
             }),
-            Expr::Unary {
-                expr: inner,
-                op: UnaryOp::Raise,
-            } => {
-                let wrapped_expr = self.wrap_expr(*inner)?;
-                let ret_type = self.current_return_type.as_ref().unwrap().clone();
-                Ok(self.wrap_to_type(wrapped_expr, &ret_type, true))
-            }
             Expr::Unary { expr: inner, op } => Ok(AnalyzedExpr {
                 ty: expr.ty.clone(),
                 expr: Expr::Unary {
@@ -365,6 +357,11 @@ impl Wrapper {
             }
             AnalyzedStatement::Print(e) => Ok(AnalyzedStatement::Print(self.wrap_expr(e)?)),
             AnalyzedStatement::Produce(e) => Ok(AnalyzedStatement::Produce(self.wrap_expr(e)?)),
+            AnalyzedStatement::Raise(e) => {
+                let wrapped_expr = self.wrap_expr(e)?;
+                let ret_type = self.current_return_type.as_ref().unwrap().clone();
+                Ok(AnalyzedStatement::Raise(self.wrap_to_type(wrapped_expr, &ret_type, true)))
+            }
             AnalyzedStatement::Break
             | AnalyzedStatement::Continue
             | AnalyzedStatement::Struct { .. }

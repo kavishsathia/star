@@ -33,12 +33,8 @@ impl Codegen {
         Codegen { functions: vec![] }
     }
 
-    fn emit_gc_retry<P, R, O>(
-        f: &mut Function,
-        prepare: P,
-        retrieve: R,
-        operation: O,
-    ) where
+    fn emit_gc_retry<P, R, O>(f: &mut Function, prepare: P, retrieve: R, operation: O)
+    where
         P: Fn(&mut Function),
         R: Fn(&mut Function),
         O: Fn(&mut Function),
@@ -285,7 +281,12 @@ impl Codegen {
         Ok(())
     }
 
-    fn compile_expr(&mut self, expr: &IRExpr, f: &mut Function, preallocated: bool) -> Result<(), CompilerError> {
+    fn compile_expr(
+        &mut self,
+        expr: &IRExpr,
+        f: &mut Function,
+        preallocated: bool,
+    ) -> Result<(), CompilerError> {
         match &expr.node {
             IRExprKind::Integer(n) => {
                 f.instruction(&Instruction::I64Const(*n));
@@ -421,19 +422,37 @@ impl Codegen {
                                     f.instruction(&Instruction::LocalSet(0)); // right -> local0
                                     f.instruction(&Instruction::I32Const(0));
                                     f.instruction(&Instruction::LocalGet(0));
-                                    f.instruction(&Instruction::I32Store(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                                    f.instruction(&Instruction::I32Store(MemArg {
+                                        offset: 8,
+                                        align: 2,
+                                        memory_index: 2,
+                                    }));
                                     f.instruction(&Instruction::LocalSet(0)); // left -> local0
                                     f.instruction(&Instruction::I32Const(0));
                                     f.instruction(&Instruction::LocalGet(0));
-                                    f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                                    f.instruction(&Instruction::I32Store(MemArg {
+                                        offset: 4,
+                                        align: 2,
+                                        memory_index: 2,
+                                    }));
                                 },
                                 |f| {
                                     f.instruction(&Instruction::I32Const(0));
-                                    f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                                    f.instruction(&Instruction::I32Load(MemArg {
+                                        offset: 4,
+                                        align: 2,
+                                        memory_index: 2,
+                                    }));
                                     f.instruction(&Instruction::I32Const(0));
-                                    f.instruction(&Instruction::I32Load(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                                    f.instruction(&Instruction::I32Load(MemArg {
+                                        offset: 8,
+                                        align: 2,
+                                        memory_index: 2,
+                                    }));
                                 },
-                                |f| { f.instruction(&Instruction::Call(6)); },
+                                |f| {
+                                    f.instruction(&Instruction::Call(6));
+                                },
                             );
                             return Ok(());
                         }
@@ -548,9 +567,11 @@ impl Codegen {
                     BinaryOp::In => {
                         f.instruction(&Instruction::Call(8));
                     }
-                    _ => return Err(CompilerError::Codegen {
-                        message: format!("Unsupported binary operation: {:?}", op),
-                    }),
+                    _ => {
+                        return Err(CompilerError::Codegen {
+                            message: format!("Unsupported binary operation: {:?}", op),
+                        })
+                    }
                 }
             }
             IRExprKind::Unary { op, expr } => match op {
@@ -567,10 +588,6 @@ impl Codegen {
                 UnaryOp::Not => {
                     self.compile_expr(expr, f, false)?;
                     f.instruction(&Instruction::I32Eqz);
-                }
-                UnaryOp::Raise => {
-                    self.compile_expr(expr, f, false)?;
-                    f.instruction(&Instruction::Return);
                 }
                 UnaryOp::Count => {
                     self.compile_expr(expr, f, false)?;
@@ -592,13 +609,23 @@ impl Codegen {
                                 f.instruction(&Instruction::LocalSet(1)); // i64 needs local1
                                 f.instruction(&Instruction::I32Const(0));
                                 f.instruction(&Instruction::LocalGet(1));
-                                f.instruction(&Instruction::I64Store(MemArg { offset: 4, align: 3, memory_index: 2 }));
+                                f.instruction(&Instruction::I64Store(MemArg {
+                                    offset: 4,
+                                    align: 3,
+                                    memory_index: 2,
+                                }));
                             },
                             |f| {
                                 f.instruction(&Instruction::I32Const(0));
-                                f.instruction(&Instruction::I64Load(MemArg { offset: 4, align: 3, memory_index: 2 }));
+                                f.instruction(&Instruction::I64Load(MemArg {
+                                    offset: 4,
+                                    align: 3,
+                                    memory_index: 2,
+                                }));
                             },
-                            |f| { f.instruction(&Instruction::Call(10)); },
+                            |f| {
+                                f.instruction(&Instruction::Call(10));
+                            },
                         );
                     }
                     TypeKind::String => {
@@ -612,13 +639,23 @@ impl Codegen {
                                 f.instruction(&Instruction::LocalSet(0));
                                 f.instruction(&Instruction::I32Const(0));
                                 f.instruction(&Instruction::LocalGet(0));
-                                f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                                f.instruction(&Instruction::I32Store(MemArg {
+                                    offset: 4,
+                                    align: 2,
+                                    memory_index: 2,
+                                }));
                             },
                             |f| {
                                 f.instruction(&Instruction::I32Const(0));
-                                f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                                f.instruction(&Instruction::I32Load(MemArg {
+                                    offset: 4,
+                                    align: 2,
+                                    memory_index: 2,
+                                }));
                             },
-                            |f| { f.instruction(&Instruction::Call(11)); },
+                            |f| {
+                                f.instruction(&Instruction::Call(11));
+                            },
                         );
                     }
                     TypeKind::Float => {
@@ -629,18 +666,30 @@ impl Codegen {
                                 f.instruction(&Instruction::LocalSet(1)); // f64 needs local1
                                 f.instruction(&Instruction::I32Const(0));
                                 f.instruction(&Instruction::LocalGet(1));
-                                f.instruction(&Instruction::F64Store(MemArg { offset: 4, align: 3, memory_index: 2 }));
+                                f.instruction(&Instruction::F64Store(MemArg {
+                                    offset: 4,
+                                    align: 3,
+                                    memory_index: 2,
+                                }));
                             },
                             |f| {
                                 f.instruction(&Instruction::I32Const(0));
-                                f.instruction(&Instruction::F64Load(MemArg { offset: 4, align: 3, memory_index: 2 }));
+                                f.instruction(&Instruction::F64Load(MemArg {
+                                    offset: 4,
+                                    align: 3,
+                                    memory_index: 2,
+                                }));
                             },
-                            |f| { f.instruction(&Instruction::Call(12)); },
+                            |f| {
+                                f.instruction(&Instruction::Call(12));
+                            },
                         );
                     }
-                    _ => return Err(CompilerError::Codegen {
-                        message: format!("Cannot stringify type {:?}", expr.ty),
-                    }),
+                    _ => {
+                        return Err(CompilerError::Codegen {
+                            message: format!("Cannot stringify type {:?}", expr.ty),
+                        })
+                    }
                 },
             },
             IRExprKind::Call { callee, args } => {
@@ -676,56 +725,78 @@ impl Codegen {
                         |f| {
                             f.instruction(&Instruction::I32Const(0));
                             f.instruction(&Instruction::I32Const(idx));
-                            f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                            f.instruction(&Instruction::I32Store(MemArg {
+                                offset: 4,
+                                align: 2,
+                                memory_index: 2,
+                            }));
                         },
                         |f| {
                             f.instruction(&Instruction::I32Const(0));
-                            f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                            f.instruction(&Instruction::I32Load(MemArg {
+                                offset: 4,
+                                align: 2,
+                                memory_index: 2,
+                            }));
                         },
-                        |f| { f.instruction(&Instruction::Call(3)); },
+                        |f| {
+                            f.instruction(&Instruction::Call(3));
+                        },
                     );
                 }
                 f.instruction(&Instruction::LocalTee(0));
+
+                for _ in fields {
+                    f.instruction(&Instruction::LocalGet(0));
+                }
+
                 let mut offset = 0u64;
                 for field_expr in fields {
                     self.compile_expr(field_expr, f, false)?;
+                    // Convert to i64 for uniform 8-byte storage
                     match field_expr.ty.kind {
-                        TypeKind::Struct { .. } | TypeKind::List { .. } => {
-                            f.instruction(&Instruction::I32Store(MemArg {
-                                offset,
-                                align: 2,
-                                memory_index: 0,
-                            }));
+                        TypeKind::Struct { .. }
+                        | TypeKind::List { .. }
+                        | TypeKind::String
+                        | TypeKind::Boolean => {
+                            f.instruction(&Instruction::I64ExtendI32U);
+                        }
+                        TypeKind::Float => {
+                            f.instruction(&Instruction::I64ReinterpretF64);
                         }
                         _ => {
-                            f.instruction(&Instruction::I64Store(MemArg {
-                                offset,
-                                align: 3,
-                                memory_index: 0,
-                            }));
+                            // Integer, Function - already i64
                         }
                     }
-                    f.instruction(&Instruction::LocalGet(0));
+                    f.instruction(&Instruction::I64Store(MemArg {
+                        offset,
+                        align: 3,
+                        memory_index: 0,
+                    }));
                     offset += 8;
                 }
             }
             IRExprKind::Field { object, offset } => {
                 self.compile_expr(object, f, false)?;
-                if matches!(
-                    expr.ty.kind,
-                    TypeKind::Struct { .. } | TypeKind::List { .. }
-                ) {
-                    f.instruction(&Instruction::I32Load(MemArg {
-                        offset: *offset as u64,
-                        align: 2,
-                        memory_index: 0,
-                    }));
-                } else {
-                    f.instruction(&Instruction::I64Load(MemArg {
-                        offset: *offset as u64,
-                        align: 3,
-                        memory_index: 0,
-                    }));
+                // Load as i64, then convert back to original type
+                f.instruction(&Instruction::I64Load(MemArg {
+                    offset: *offset as u64,
+                    align: 3,
+                    memory_index: 0,
+                }));
+                match expr.ty.kind {
+                    TypeKind::Struct { .. }
+                    | TypeKind::List { .. }
+                    | TypeKind::String
+                    | TypeKind::Boolean => {
+                        f.instruction(&Instruction::I32WrapI64);
+                    }
+                    TypeKind::Float => {
+                        f.instruction(&Instruction::F64ReinterpretI64);
+                    }
+                    _ => {
+                        // Integer, Function - already i64
+                    }
                 }
             }
             IRExprKind::FieldReference { object, offset } => {
@@ -757,25 +828,51 @@ impl Codegen {
                         f.instruction(&Instruction::LocalSet(0)); // end -> local0
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::LocalGet(0));
-                        f.instruction(&Instruction::I32Store(MemArg { offset: 12, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Store(MemArg {
+                            offset: 12,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                         f.instruction(&Instruction::LocalSet(0)); // start -> local0
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::LocalGet(0));
-                        f.instruction(&Instruction::I32Store(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Store(MemArg {
+                            offset: 8,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                         f.instruction(&Instruction::LocalSet(0)); // ptr -> local0
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::LocalGet(0));
-                        f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Store(MemArg {
+                            offset: 4,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                     },
                     |f| {
                         f.instruction(&Instruction::I32Const(0));
-                        f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Load(MemArg {
+                            offset: 4,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                         f.instruction(&Instruction::I32Const(0));
-                        f.instruction(&Instruction::I32Load(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Load(MemArg {
+                            offset: 8,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                         f.instruction(&Instruction::I32Const(0));
-                        f.instruction(&Instruction::I32Load(MemArg { offset: 12, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Load(MemArg {
+                            offset: 12,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                     },
-                    |f| { f.instruction(&Instruction::Call(7)); },
+                    |f| {
+                        f.instruction(&Instruction::Call(7));
+                    },
                 );
             }
 
@@ -786,18 +883,36 @@ impl Codegen {
                     |f| {
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Const(1));
-                        f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Store(MemArg {
+                            offset: 4,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Const(len));
-                        f.instruction(&Instruction::I32Store(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Store(MemArg {
+                            offset: 8,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                     },
                     |f| {
                         f.instruction(&Instruction::I32Const(0));
-                        f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Load(MemArg {
+                            offset: 4,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                         f.instruction(&Instruction::I32Const(0));
-                        f.instruction(&Instruction::I32Load(MemArg { offset: 8, align: 2, memory_index: 2 }));
+                        f.instruction(&Instruction::I32Load(MemArg {
+                            offset: 8,
+                            align: 2,
+                            memory_index: 2,
+                        }));
                     },
-                    |f| { f.instruction(&Instruction::Call(5)); },
+                    |f| {
+                        f.instruction(&Instruction::Call(5));
+                    },
                 );
                 f.instruction(&Instruction::LocalTee(0));
                 for (_, _) in elements.iter().enumerate() {
@@ -829,9 +944,34 @@ impl Codegen {
                 }));
             }
             IRExprKind::Match { .. } => todo!(),
-            IRExprKind::UnwrapError(_) => todo!(),
-            IRExprKind::UnwrapNull(expr) => {
-                self.compile_expr(expr, f, false)?;
+            IRExprKind::UnwrapError(inside) => {
+                self.compile_expr(inside, f, false)?;
+                f.instruction(&Instruction::LocalTee(0));
+                f.instruction(&Instruction::I64Load(MemArg {
+                    offset: 0,
+                    align: 3,
+                    memory_index: 0,
+                }));
+                f.instruction(&Instruction::I64Const(1));
+                f.instruction(&Instruction::I64Eq);
+                f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+                    ValType::I64,
+                )));
+                f.instruction(&Instruction::Unreachable);
+                f.instruction(&Instruction::Else);
+                f.instruction(&Instruction::LocalGet(0));
+                if !expr.ty.nullable && !expr.ty.errorable {
+                    f.instruction(&Instruction::I64Load(MemArg {
+                        offset: 8,
+                        align: 3,
+                        memory_index: 0,
+                    }));
+                } else {
+                }
+                f.instruction(&Instruction::End);
+            }
+            IRExprKind::UnwrapNull(inside) => {
+                self.compile_expr(inside, f, false)?;
                 f.instruction(&Instruction::LocalTee(0));
                 f.instruction(&Instruction::I64Load(MemArg {
                     offset: 0,
@@ -846,11 +986,14 @@ impl Codegen {
                 f.instruction(&Instruction::Unreachable);
                 f.instruction(&Instruction::Else);
                 f.instruction(&Instruction::LocalGet(0));
-                f.instruction(&Instruction::I64Load(MemArg {
-                    offset: 8,
-                    align: 3,
-                    memory_index: 0,
-                }));
+                if !expr.ty.nullable && !expr.ty.errorable {
+                    f.instruction(&Instruction::I64Load(MemArg {
+                        offset: 8,
+                        align: 3,
+                        memory_index: 0,
+                    }));
+                } else {
+                }
                 f.instruction(&Instruction::End);
             }
         }
@@ -953,6 +1096,11 @@ impl Codegen {
                 f.instruction(&Instruction::Call(0));
             }
             IRStmt::Produce(_) => todo!(),
+            IRStmt::Raise(expr) => {
+                self.compile_expr(expr, f, false)?;
+                f.instruction(&Instruction::Call(15));
+                f.instruction(&Instruction::Return);
+            }
             IRStmt::LocalClosure {
                 fn_index,
                 captures,
@@ -969,19 +1117,31 @@ impl Codegen {
                             |f| {
                                 f.instruction(&Instruction::I32Const(0));
                                 f.instruction(&Instruction::I32Const(idx));
-                                f.instruction(&Instruction::I32Store(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                                f.instruction(&Instruction::I32Store(MemArg {
+                                    offset: 4,
+                                    align: 2,
+                                    memory_index: 2,
+                                }));
                             },
                             |f| {
                                 f.instruction(&Instruction::I32Const(0));
-                                f.instruction(&Instruction::I32Load(MemArg { offset: 4, align: 2, memory_index: 2 }));
+                                f.instruction(&Instruction::I32Load(MemArg {
+                                    offset: 4,
+                                    align: 2,
+                                    memory_index: 2,
+                                }));
                             },
-                            |f| { f.instruction(&Instruction::Call(3)); },
+                            |f| {
+                                f.instruction(&Instruction::Call(3));
+                            },
                         );
                         f.instruction(&Instruction::LocalTee(0));
                     }
-                    _ => return Err(CompilerError::Codegen {
-                        message: "Captures must be a local struct allocation".to_string(),
-                    }),
+                    _ => {
+                        return Err(CompilerError::Codegen {
+                            message: "Captures must be a local struct allocation".to_string(),
+                        })
+                    }
                 }
                 f.instruction(&Instruction::I64ExtendI32U);
                 f.instruction(&Instruction::I32Const(*fn_index as i32));

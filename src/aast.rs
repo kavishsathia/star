@@ -118,6 +118,7 @@ pub enum AnalyzedStatement {
     },
     Print(AnalyzedExpr),
     Produce(AnalyzedExpr),
+    Raise(AnalyzedExpr),
     LocalClosure {
         fn_index: u32,
         captures: Box<AnalyzedExpr>,

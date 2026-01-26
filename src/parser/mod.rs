@@ -106,7 +106,7 @@ impl<'a> Parser<'a> {
 
     pub fn prefix_binding_power(op: &Token) -> Option<u8> {
         match op {
-            Token::Minus | Token::Not | Token::Raise | Token::Count | Token::Stringify => Some(23),
+            Token::Minus | Token::Not | Token::Count | Token::Stringify => Some(23),
             _ => None,
         }
     }

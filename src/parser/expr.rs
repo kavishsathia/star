@@ -46,7 +46,6 @@ impl<'a> Parser<'a> {
             }
             Some(Token::Not)
             | Some(Token::Minus)
-            | Some(Token::Raise)
             | Some(Token::Count)
             | Some(Token::Stringify) => {
                 let op = self.advance().unwrap();
@@ -59,10 +58,6 @@ impl<'a> Parser<'a> {
                     },
                     Token::Not => Expr::Unary {
                         op: UnaryOp::Not,
-                        expr: Box::new(expr),
-                    },
-                    Token::Raise => Expr::Unary {
-                        op: UnaryOp::Raise,
                         expr: Box::new(expr),
                     },
                     Token::Count => Expr::Unary {

@@ -282,6 +282,30 @@ impl TypeChecker {
                 }
                 Ok(TypedStatement::Print(typed_expr))
             }
+
+            ast::Statement::Raise(expr) => {
+                let typed_expr = self.check_expr(expr)?;
+                if let TypeKind::Struct { name } = &typed_expr.ty.kind {
+                    if !self.errors.contains(name) {
+                        return Err(TypeError::new(format!(
+                            "'{}' is not an error type",
+                            name
+                        )));
+                    }
+                } else {
+                    return Err(TypeError::new("Can only raise error types"));
+                }
+                if let Some(expected_type) = &self.current_return_type {
+                    if !expected_type.errorable {
+                        return Err(TypeError::new(
+                            "Cannot raise in a function that does not return an errorable type",
+                        ));
+                    }
+                } else {
+                    return Err(TypeError::new("Raise statement outside of function"));
+                }
+                Ok(TypedStatement::Raise(typed_expr))
+            }
         }
     }
 

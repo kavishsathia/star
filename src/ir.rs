@@ -110,6 +110,7 @@ pub enum IRStmt {
     },
     Print(IRExpr),
     Produce(IRExpr),
+    Raise(IRExpr),
     LocalClosure {
         fn_index: u32,
         captures: Box<IRExpr>,

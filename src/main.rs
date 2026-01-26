@@ -29,7 +29,10 @@ error Hello;
 fn main(): integer {
     fn maybe(): integer! {
         raise new Hello { message: "An error occurred" };
+        // return 42;
     }
+
+    print $maybe()!!;
 return 0;
 }
     "#;
