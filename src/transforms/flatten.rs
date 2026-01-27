@@ -1,6 +1,6 @@
 use crate::ast::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
-use crate::ast::{Type, TypeKind};
 use crate::ast::FlattenedProgram;
+use crate::ast::{Type, TypeKind};
 
 pub fn segregate_fields(fields: Vec<(String, Type)>) -> (Vec<(String, Type)>, u32, u32) {
     let mut struct_ptrs = vec![];
@@ -214,7 +214,7 @@ impl Flattener {
                                         object: Box::new(AnalyzedExpr {
                                             expr: aast::Expr::Identifier {
                                                 name: "captures".to_string(),
-                                                index: Some(1),
+                                                index: Some(2),
                                             },
                                             ty: Type {
                                                 kind: TypeKind::Struct {

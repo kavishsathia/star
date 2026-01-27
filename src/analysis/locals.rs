@@ -1,7 +1,7 @@
 use crate::ast::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
+use crate::ast::tast::{self, TypedExpr, TypedProgram, TypedStatement};
 use crate::ast::{Type, TypeKind};
 use crate::error::CompilerError;
-use crate::ast::tast::{self, TypedExpr, TypedProgram, TypedStatement};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub struct LocalsIndexer {
@@ -137,7 +137,10 @@ impl LocalsIndexer {
         })
     }
 
-    pub fn analyze_stmt(&mut self, stmt: &TypedStatement) -> Result<AnalyzedStatement, CompilerError> {
+    pub fn analyze_stmt(
+        &mut self,
+        stmt: &TypedStatement,
+    ) -> Result<AnalyzedStatement, CompilerError> {
         match stmt {
             TypedStatement::Let { name, ty, value } => {
                 let analyzed_value = match value {
@@ -295,7 +298,9 @@ impl LocalsIndexer {
                 Ok(AnalyzedStatement::Return(analyzed))
             }
             TypedStatement::Print(expr) => Ok(AnalyzedStatement::Print(self.analyze_expr(expr)?)),
-            TypedStatement::Produce(expr) => Ok(AnalyzedStatement::Produce(self.analyze_expr(expr)?)),
+            TypedStatement::Produce(expr) => {
+                Ok(AnalyzedStatement::Produce(self.analyze_expr(expr)?))
+            }
             TypedStatement::Break => Ok(AnalyzedStatement::Break),
             TypedStatement::Continue => Ok(AnalyzedStatement::Continue),
             TypedStatement::Struct { name, fields } => Ok(AnalyzedStatement::Struct {
@@ -415,7 +420,10 @@ impl LocalsIndexer {
         })
     }
 
-    pub fn analyze_program(&mut self, program: &TypedProgram) -> Result<AnalyzedProgram, CompilerError> {
+    pub fn analyze_program(
+        &mut self,
+        program: &TypedProgram,
+    ) -> Result<AnalyzedProgram, CompilerError> {
         let mut statements: Vec<_> = program.statements.iter().collect();
         if let Some(main_idx) = statements
             .iter()

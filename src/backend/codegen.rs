@@ -7,6 +7,180 @@ use wasm_encoder::{
     TypeSection, ValType,
 };
 
+/// Declarative import function definitions
+/// The index of each entry becomes the function index used in Call instructions
+struct ImportDef {
+    module: &'static str,
+    name: &'static str,
+    params: &'static [ValType],
+    results: &'static [ValType],
+}
+
+const FUNCTION_IMPORTS: &[ImportDef] = &[
+    ImportDef {
+        module: "env",
+        name: "print",
+        params: &[ValType::I32],
+        results: &[],
+    },
+    ImportDef {
+        module: "alloc",
+        name: "init",
+        params: &[],
+        results: &[],
+    },
+    ImportDef {
+        module: "alloc",
+        name: "register",
+        params: &[ValType::I32, ValType::I32, ValType::I32],
+        results: &[],
+    },
+    ImportDef {
+        module: "alloc",
+        name: "falloc",
+        params: &[ValType::I32],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "dinit",
+        params: &[],
+        results: &[],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "dalloc",
+        params: &[ValType::I32, ValType::I32],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "dconcat",
+        params: &[ValType::I32, ValType::I32],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "dslice",
+        params: &[ValType::I32, ValType::I32, ValType::I32],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "din_u64",
+        params: &[ValType::I64, ValType::I32],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "deq",
+        params: &[ValType::I32, ValType::I32],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "ditoa",
+        params: &[ValType::I64],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "dbtoa",
+        params: &[ValType::I32],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "dalloc",
+        name: "dftoa",
+        params: &[ValType::F64],
+        results: &[ValType::I32],
+    },
+    ImportDef {
+        module: "shadow",
+        name: "init",
+        params: &[],
+        results: &[],
+    },
+    ImportDef {
+        module: "shadow",
+        name: "push",
+        params: &[ValType::I32],
+        results: &[],
+    },
+    ImportDef {
+        module: "shadow",
+        name: "pop",
+        params: &[],
+        results: &[],
+    },
+    ImportDef {
+        module: "shadow",
+        name: "set",
+        params: &[ValType::I32, ValType::I32, ValType::I32],
+        results: &[],
+    },
+    ImportDef {
+        module: "shadow",
+        name: "gc",
+        params: &[],
+        results: &[],
+    },
+];
+
+/// Import function indices - derived from FUNCTION_IMPORTS array position
+mod import {
+    pub const PRINT: u32 = 0;
+    pub const ALLOC_INIT: u32 = 1;
+    pub const ALLOC_REGISTER: u32 = 2;
+    pub const FALLOC: u32 = 3;
+    pub const DINIT: u32 = 4;
+    pub const DALLOC: u32 = 5;
+    pub const DCONCAT: u32 = 6;
+    pub const DSLICE: u32 = 7;
+    pub const DIN_U64: u32 = 8;
+    pub const DEQ: u32 = 9;
+    pub const DITOA: u32 = 10;
+    pub const DBTOA: u32 = 11;
+    pub const DFTOA: u32 = 12;
+    pub const SHADOW_INIT: u32 = 13;
+    pub const SHADOW_PUSH: u32 = 14;
+    pub const SHADOW_POP: u32 = 15;
+    pub const SHADOW_SET: u32 = 16;
+    pub const GC: u32 = 17;
+}
+
+/// Memory import definitions
+struct MemoryImportDef {
+    module: &'static str,
+    name: &'static str,
+    min_pages: u64,
+}
+
+const MEMORY_IMPORTS: &[MemoryImportDef] = &[
+    MemoryImportDef {
+        module: "alloc",
+        name: "memory",
+        min_pages: 1,
+    },
+    MemoryImportDef {
+        module: "dalloc",
+        name: "memory",
+        min_pages: 16,
+    },
+    MemoryImportDef {
+        module: "shadow",
+        name: "memory",
+        min_pages: 1,
+    },
+];
+
+/// Memory indices for the three memory spaces
+mod mem {
+    pub const ALLOC: u32 = 0; // Fixed allocator memory (structs)
+    pub const DALLOC: u32 = 1; // Dynamic allocator memory (lists, strings)
+    pub const SHADOW: u32 = 2; // Shadow stack memory (GC roots + scratchpad)
+}
+
 pub struct Codegen {
     functions: Vec<IRFunction>,
 }
@@ -48,7 +222,7 @@ impl Codegen {
         f.instruction(&Instruction::I32Eqz);
         f.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
 
-        f.instruction(&Instruction::Call(17)); // gc
+        f.instruction(&Instruction::Call(import::GC));
         retrieve(f);
         operation(f);
         f.instruction(&Instruction::LocalSet(0));
@@ -56,6 +230,79 @@ impl Codegen {
         f.instruction(&Instruction::End);
 
         f.instruction(&Instruction::LocalGet(0));
+    }
+
+    /// Emit instructions to convert a value from i64 storage format to its actual runtime type.
+    /// Values are stored as i64 in memory, but need conversion for pointer types and floats.
+    fn emit_access_cast(f: &mut Function, ty: &TypeKind) {
+        match ty {
+            TypeKind::Struct { .. }
+            | TypeKind::List { .. }
+            | TypeKind::String
+            | TypeKind::Boolean => {
+                f.instruction(&Instruction::I32WrapI64);
+            }
+            TypeKind::Float => {
+                f.instruction(&Instruction::F64ReinterpretI64);
+            }
+            _ => {
+                // Integer, Function - already i64
+            }
+        }
+    }
+
+    /// Emit instructions to convert a value from its runtime type to i64 storage format.
+    /// Inverse of emit_access_cast.
+    fn emit_storage_cast(f: &mut Function, ty: &TypeKind) {
+        match ty {
+            TypeKind::Struct { .. }
+            | TypeKind::List { .. }
+            | TypeKind::String
+            | TypeKind::Boolean => {
+                f.instruction(&Instruction::I64ExtendI32U);
+            }
+            TypeKind::Float => {
+                f.instruction(&Instruction::I64ReinterpretF64);
+            }
+            _ => {
+                // Integer, Function - already i64
+            }
+        }
+    }
+
+    /// Emit code to unwrap a nullable or errorable value.
+    /// `tag` is 0 for null-check, 1 for error-check.
+    /// `result_ty` is the type after unwrapping.
+    fn emit_unwrap(f: &mut Function, tag: i64, result_ty: &Type) {
+        let fully_unwrapped = !result_ty.nullable && !result_ty.errorable;
+
+        f.instruction(&Instruction::LocalTee(0));
+        f.instruction(&Instruction::I64Load(MemArg {
+            offset: 0,
+            align: 3,
+            memory_index: mem::ALLOC,
+        }));
+        f.instruction(&Instruction::I64Const(tag));
+        f.instruction(&Instruction::I64Eq);
+
+        f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+            Self::type_to_valtype(result_ty),
+        )));
+
+        f.instruction(&Instruction::Unreachable);
+        f.instruction(&Instruction::Else);
+        f.instruction(&Instruction::LocalGet(0));
+
+        if fully_unwrapped {
+            f.instruction(&Instruction::I64Load(MemArg {
+                offset: 8,
+                align: 3,
+                memory_index: mem::ALLOC,
+            }));
+            Self::emit_access_cast(f, &result_ty.kind);
+        }
+
+        f.instruction(&Instruction::End);
     }
 
     fn find_type_index(&self, callee_ty: &Type) -> Result<u32, CompilerError> {
@@ -71,108 +318,63 @@ impl Codegen {
         })
     }
 
-    const IMPORT_COUNT: u32 = 18;
+    const IMPORT_COUNT: u32 = FUNCTION_IMPORTS.len() as u32;
 
-    pub fn compile(&mut self, program: &IRProgram) -> Result<Vec<u8>, CompilerError> {
-        self.functions = program.functions.clone();
-        let mut module = Module::new();
-
+    /// Build the type section from declarative imports + program functions
+    fn build_type_section(&self, program: &IRProgram) -> TypeSection {
         let mut types = TypeSection::new();
-        types.ty().function(vec![ValType::I32], vec![]); // 0: print
-        types.ty().function(vec![], vec![]); // 1: init
-        types
-            .ty()
-            .function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]); // 2: register
-        types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 3: falloc
-        types.ty().function(vec![], vec![]); // 4: dinit
-        types
-            .ty()
-            .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 5: dalloc
-        types
-            .ty()
-            .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 6: dconcat
-        types.ty().function(
-            vec![ValType::I32, ValType::I32, ValType::I32],
-            vec![ValType::I32],
-        ); // 7: dslice
-        types
-            .ty()
-            .function(vec![ValType::I64, ValType::I32], vec![ValType::I32]); // 8: din_u64
-        types
-            .ty()
-            .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]); // 9: deq
-        types.ty().function(vec![ValType::I64], vec![ValType::I32]); // 10: ditoa
-        types.ty().function(vec![ValType::I32], vec![ValType::I32]); // 11: dbtoa
-        types.ty().function(vec![ValType::F64], vec![ValType::I32]); // 12: dftoa
-        types.ty().function(vec![], vec![]); // 13: sinit
-        types.ty().function(vec![ValType::I32], vec![]); // 14: spush
-        types.ty().function(vec![], vec![]); // 15: spop
-        types
-            .ty()
-            .function(vec![ValType::I32, ValType::I32, ValType::I32], vec![]); // 16: sset
-        types.ty().function(vec![], vec![]); // 17: gc
 
+        // Add types for imported functions
+        for def in FUNCTION_IMPORTS {
+            types
+                .ty()
+                .function(def.params.to_vec(), def.results.to_vec());
+        }
+
+        // Add types for program functions
         for func in &program.functions {
             let mut params: Vec<ValType> = vec![ValType::I32, ValType::I64, ValType::I32];
             params.extend(func.params.iter().map(Self::type_to_valtype));
             let results: Vec<ValType> = vec![Self::type_to_valtype(&func.returns)];
             types.ty().function(params, results);
         }
-        module.section(&types);
 
+        types
+    }
+
+    /// Build the import section from declarative imports
+    fn build_import_section(&self) -> ImportSection {
         let mut imports = ImportSection::new();
-        imports.import("env", "print", EntityType::Function(0));
-        imports.import("alloc", "init", EntityType::Function(1));
-        imports.import("alloc", "register", EntityType::Function(2));
-        imports.import("alloc", "falloc", EntityType::Function(3));
-        imports.import("dalloc", "dinit", EntityType::Function(4));
-        imports.import("dalloc", "dalloc", EntityType::Function(5));
-        imports.import("dalloc", "dconcat", EntityType::Function(6));
-        imports.import("dalloc", "dslice", EntityType::Function(7));
-        imports.import("dalloc", "din_u64", EntityType::Function(8));
-        imports.import("dalloc", "deq", EntityType::Function(9));
-        imports.import("dalloc", "ditoa", EntityType::Function(10));
-        imports.import("dalloc", "dbtoa", EntityType::Function(11));
-        imports.import("dalloc", "dftoa", EntityType::Function(12));
-        imports.import("shadow", "init", EntityType::Function(13));
-        imports.import("shadow", "push", EntityType::Function(14));
-        imports.import("shadow", "pop", EntityType::Function(15));
-        imports.import("shadow", "set", EntityType::Function(16));
-        imports.import("shadow", "gc", EntityType::Function(17));
-        imports.import(
-            "alloc",
-            "memory",
-            EntityType::Memory(wasm_encoder::MemoryType {
-                minimum: 1,
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            }),
-        );
-        imports.import(
-            "dalloc",
-            "memory",
-            EntityType::Memory(wasm_encoder::MemoryType {
-                minimum: 16,
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            }),
-        );
-        imports.import(
-            "shadow",
-            "memory",
-            EntityType::Memory(wasm_encoder::MemoryType {
-                minimum: 1,
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            }),
-        );
-        module.section(&imports);
+
+        // Add function imports
+        for (i, def) in FUNCTION_IMPORTS.iter().enumerate() {
+            imports.import(def.module, def.name, EntityType::Function(i as u32));
+        }
+
+        // Add memory imports
+        for mem_def in MEMORY_IMPORTS {
+            imports.import(
+                mem_def.module,
+                mem_def.name,
+                EntityType::Memory(wasm_encoder::MemoryType {
+                    minimum: mem_def.min_pages,
+                    maximum: None,
+                    memory64: false,
+                    shared: false,
+                    page_size_log2: None,
+                }),
+            );
+        }
+
+        imports
+    }
+
+    pub fn compile(&mut self, program: &IRProgram) -> Result<Vec<u8>, CompilerError> {
+        self.functions = program.functions.clone();
+        let mut module = Module::new();
+
+        module.section(&self.build_type_section(program));
+        module.section(&self.build_import_section());
 
         let mut functions = FunctionSection::new();
         for (i, _) in program.functions.iter().enumerate() {
@@ -231,25 +433,25 @@ impl Codegen {
         let mut f = Function::new(locals);
 
         if func.name == "main" {
-            f.instruction(&Instruction::Call(1));
-            f.instruction(&Instruction::Call(4));
-            f.instruction(&Instruction::Call(13));
+            f.instruction(&Instruction::Call(import::ALLOC_INIT));
+            f.instruction(&Instruction::Call(import::DINIT));
+            f.instruction(&Instruction::Call(import::SHADOW_INIT));
             for ir_struct in &program.structs {
                 f.instruction(&Instruction::I32Const(ir_struct.size as i32));
                 f.instruction(&Instruction::I32Const(ir_struct.struct_count as i32));
                 f.instruction(&Instruction::I32Const(ir_struct.list_count as i32));
-                f.instruction(&Instruction::Call(2));
+                f.instruction(&Instruction::Call(import::ALLOC_REGISTER));
             }
         }
 
         let frame_size = 1 + func.params.len() + func.locals.len();
         f.instruction(&Instruction::I32Const(frame_size as i32));
-        f.instruction(&Instruction::Call(14));
+        f.instruction(&Instruction::Call(import::SHADOW_PUSH));
 
         f.instruction(&Instruction::LocalGet(2));
         f.instruction(&Instruction::I32Const(0));
         f.instruction(&Instruction::I32Const(1));
-        f.instruction(&Instruction::Call(16));
+        f.instruction(&Instruction::Call(import::SHADOW_SET));
 
         for (i, param_ty) in func.params.iter().enumerate() {
             let local_index = 3 + i as u32;
@@ -259,13 +461,13 @@ impl Codegen {
                     f.instruction(&Instruction::LocalGet(local_index));
                     f.instruction(&Instruction::I32Const(shadow_slot));
                     f.instruction(&Instruction::I32Const(1));
-                    f.instruction(&Instruction::Call(16));
+                    f.instruction(&Instruction::Call(import::SHADOW_SET));
                 }
                 TypeKind::List { .. } | TypeKind::String => {
                     f.instruction(&Instruction::LocalGet(local_index));
                     f.instruction(&Instruction::I32Const(shadow_slot));
                     f.instruction(&Instruction::I32Const(2));
-                    f.instruction(&Instruction::Call(16));
+                    f.instruction(&Instruction::Call(import::SHADOW_SET));
                 }
                 _ => {}
             }
@@ -275,7 +477,7 @@ impl Codegen {
             self.compile_stmt(stmt, &mut f)?;
         }
 
-        f.instruction(&Instruction::Call(15));
+        f.instruction(&Instruction::Call(import::SHADOW_POP));
         f.instruction(&Instruction::End);
         codes.function(&f);
         Ok(())
@@ -308,14 +510,14 @@ impl Codegen {
                         f.instruction(&Instruction::I32Store(MemArg {
                             offset: 4,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Const(len));
                         f.instruction(&Instruction::I32Store(MemArg {
                             offset: 8,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                     },
                     |f| {
@@ -324,18 +526,18 @@ impl Codegen {
                         f.instruction(&Instruction::I32Load(MemArg {
                             offset: 4,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Load(MemArg {
                             offset: 8,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                     },
                     |f| {
                         // operation: call dalloc
-                        f.instruction(&Instruction::Call(5));
+                        f.instruction(&Instruction::Call(import::DALLOC));
                     },
                 );
 
@@ -348,7 +550,7 @@ impl Codegen {
                     f.instruction(&Instruction::I32Store(MemArg {
                         offset: (i * 8) as u64,
                         align: 2,
-                        memory_index: 1,
+                        memory_index: mem::DALLOC,
                     }));
                 }
             }
@@ -370,13 +572,13 @@ impl Codegen {
                         TypeKind::Struct { .. } => {
                             f.instruction(&Instruction::I32Const((*index - 2) as i32));
                             f.instruction(&Instruction::I32Const(1));
-                            f.instruction(&Instruction::Call(16));
+                            f.instruction(&Instruction::Call(import::SHADOW_SET));
                             f.instruction(&Instruction::LocalGet(*index));
                         }
                         TypeKind::List { .. } | TypeKind::String => {
                             f.instruction(&Instruction::I32Const((*index - 2) as i32));
                             f.instruction(&Instruction::I32Const(2));
-                            f.instruction(&Instruction::Call(16));
+                            f.instruction(&Instruction::Call(import::SHADOW_SET));
                             f.instruction(&Instruction::LocalGet(*index));
                         }
                         _ => {}
@@ -388,7 +590,7 @@ impl Codegen {
                     f.instruction(&Instruction::I64Store(MemArg {
                         offset: 0,
                         align: 3,
-                        memory_index: 0,
+                        memory_index: mem::ALLOC,
                     }));
                     f.instruction(&Instruction::LocalGet(0));
                 } else {
@@ -398,7 +600,7 @@ impl Codegen {
                     f.instruction(&Instruction::I64Store(MemArg {
                         offset: 0,
                         align: 3,
-                        memory_index: 1,
+                        memory_index: mem::DALLOC,
                     }));
                     f.instruction(&Instruction::LocalGet(0));
                 }
@@ -425,7 +627,7 @@ impl Codegen {
                                     f.instruction(&Instruction::I32Store(MemArg {
                                         offset: 8,
                                         align: 2,
-                                        memory_index: 2,
+                                        memory_index: mem::SHADOW,
                                     }));
                                     f.instruction(&Instruction::LocalSet(0)); // left -> local0
                                     f.instruction(&Instruction::I32Const(0));
@@ -433,7 +635,7 @@ impl Codegen {
                                     f.instruction(&Instruction::I32Store(MemArg {
                                         offset: 4,
                                         align: 2,
-                                        memory_index: 2,
+                                        memory_index: mem::SHADOW,
                                     }));
                                 },
                                 |f| {
@@ -441,17 +643,17 @@ impl Codegen {
                                     f.instruction(&Instruction::I32Load(MemArg {
                                         offset: 4,
                                         align: 2,
-                                        memory_index: 2,
+                                        memory_index: mem::SHADOW,
                                     }));
                                     f.instruction(&Instruction::I32Const(0));
                                     f.instruction(&Instruction::I32Load(MemArg {
                                         offset: 8,
                                         align: 2,
-                                        memory_index: 2,
+                                        memory_index: mem::SHADOW,
                                     }));
                                 },
                                 |f| {
-                                    f.instruction(&Instruction::Call(6));
+                                    f.instruction(&Instruction::Call(import::DCONCAT));
                                 },
                             );
                             return Ok(());
@@ -494,7 +696,7 @@ impl Codegen {
                         if left.ty.kind == TypeKind::String
                             || matches!(left.ty.kind, TypeKind::List { .. })
                         {
-                            f.instruction(&Instruction::Call(9));
+                            f.instruction(&Instruction::Call(import::DEQ));
                             return Ok(());
                         }
                         if left.ty.kind == TypeKind::Float {
@@ -507,7 +709,7 @@ impl Codegen {
                         if left.ty.kind == TypeKind::String
                             || matches!(left.ty.kind, TypeKind::List { .. })
                         {
-                            f.instruction(&Instruction::Call(9));
+                            f.instruction(&Instruction::Call(import::DEQ));
                             f.instruction(&Instruction::I32Const(0));
                             f.instruction(&Instruction::I32Eqz);
                             return Ok(());
@@ -565,7 +767,7 @@ impl Codegen {
                         f.instruction(&Instruction::I32Or);
                     }
                     BinaryOp::In => {
-                        f.instruction(&Instruction::Call(8));
+                        f.instruction(&Instruction::Call(import::DIN_U64));
                     }
                     _ => {
                         return Err(CompilerError::Codegen {
@@ -596,7 +798,7 @@ impl Codegen {
                     f.instruction(&Instruction::I32Load(MemArg {
                         offset: 0,
                         align: 2,
-                        memory_index: 1,
+                        memory_index: mem::DALLOC,
                     }));
                     f.instruction(&Instruction::I64ExtendI32U);
                 }
@@ -612,7 +814,7 @@ impl Codegen {
                                 f.instruction(&Instruction::I64Store(MemArg {
                                     offset: 4,
                                     align: 3,
-                                    memory_index: 2,
+                                    memory_index: mem::SHADOW,
                                 }));
                             },
                             |f| {
@@ -620,11 +822,11 @@ impl Codegen {
                                 f.instruction(&Instruction::I64Load(MemArg {
                                     offset: 4,
                                     align: 3,
-                                    memory_index: 2,
+                                    memory_index: mem::SHADOW,
                                 }));
                             },
                             |f| {
-                                f.instruction(&Instruction::Call(10));
+                                f.instruction(&Instruction::Call(import::DITOA));
                             },
                         );
                     }
@@ -642,7 +844,7 @@ impl Codegen {
                                 f.instruction(&Instruction::I32Store(MemArg {
                                     offset: 4,
                                     align: 2,
-                                    memory_index: 2,
+                                    memory_index: mem::SHADOW,
                                 }));
                             },
                             |f| {
@@ -650,11 +852,11 @@ impl Codegen {
                                 f.instruction(&Instruction::I32Load(MemArg {
                                     offset: 4,
                                     align: 2,
-                                    memory_index: 2,
+                                    memory_index: mem::SHADOW,
                                 }));
                             },
                             |f| {
-                                f.instruction(&Instruction::Call(11));
+                                f.instruction(&Instruction::Call(import::DBTOA));
                             },
                         );
                     }
@@ -669,7 +871,7 @@ impl Codegen {
                                 f.instruction(&Instruction::F64Store(MemArg {
                                     offset: 4,
                                     align: 3,
-                                    memory_index: 2,
+                                    memory_index: mem::SHADOW,
                                 }));
                             },
                             |f| {
@@ -677,11 +879,11 @@ impl Codegen {
                                 f.instruction(&Instruction::F64Load(MemArg {
                                     offset: 4,
                                     align: 3,
-                                    memory_index: 2,
+                                    memory_index: mem::SHADOW,
                                 }));
                             },
                             |f| {
-                                f.instruction(&Instruction::Call(12));
+                                f.instruction(&Instruction::Call(import::DFTOA));
                             },
                         );
                     }
@@ -728,7 +930,7 @@ impl Codegen {
                             f.instruction(&Instruction::I32Store(MemArg {
                                 offset: 4,
                                 align: 2,
-                                memory_index: 2,
+                                memory_index: mem::SHADOW,
                             }));
                         },
                         |f| {
@@ -736,11 +938,11 @@ impl Codegen {
                             f.instruction(&Instruction::I32Load(MemArg {
                                 offset: 4,
                                 align: 2,
-                                memory_index: 2,
+                                memory_index: mem::SHADOW,
                             }));
                         },
                         |f| {
-                            f.instruction(&Instruction::Call(3));
+                            f.instruction(&Instruction::Call(import::FALLOC));
                         },
                     );
                 }
@@ -753,51 +955,23 @@ impl Codegen {
                 let mut offset = 0u64;
                 for field_expr in fields {
                     self.compile_expr(field_expr, f, false)?;
-                    // Convert to i64 for uniform 8-byte storage
-                    match field_expr.ty.kind {
-                        TypeKind::Struct { .. }
-                        | TypeKind::List { .. }
-                        | TypeKind::String
-                        | TypeKind::Boolean => {
-                            f.instruction(&Instruction::I64ExtendI32U);
-                        }
-                        TypeKind::Float => {
-                            f.instruction(&Instruction::I64ReinterpretF64);
-                        }
-                        _ => {
-                            // Integer, Function - already i64
-                        }
-                    }
+                    Self::emit_storage_cast(f, &field_expr.ty.kind);
                     f.instruction(&Instruction::I64Store(MemArg {
                         offset,
                         align: 3,
-                        memory_index: 0,
+                        memory_index: mem::ALLOC,
                     }));
                     offset += 8;
                 }
             }
             IRExprKind::Field { object, offset } => {
                 self.compile_expr(object, f, false)?;
-                // Load as i64, then convert back to original type
                 f.instruction(&Instruction::I64Load(MemArg {
                     offset: *offset as u64,
                     align: 3,
-                    memory_index: 0,
+                    memory_index: mem::ALLOC,
                 }));
-                match expr.ty.kind {
-                    TypeKind::Struct { .. }
-                    | TypeKind::List { .. }
-                    | TypeKind::String
-                    | TypeKind::Boolean => {
-                        f.instruction(&Instruction::I32WrapI64);
-                    }
-                    TypeKind::Float => {
-                        f.instruction(&Instruction::F64ReinterpretI64);
-                    }
-                    _ => {
-                        // Integer, Function - already i64
-                    }
-                }
+                Self::emit_access_cast(f, &expr.ty.kind);
             }
             IRExprKind::FieldReference { object, offset } => {
                 self.compile_expr(object, f, false)?;
@@ -831,7 +1005,7 @@ impl Codegen {
                         f.instruction(&Instruction::I32Store(MemArg {
                             offset: 12,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                         f.instruction(&Instruction::LocalSet(0)); // start -> local0
                         f.instruction(&Instruction::I32Const(0));
@@ -839,7 +1013,7 @@ impl Codegen {
                         f.instruction(&Instruction::I32Store(MemArg {
                             offset: 8,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                         f.instruction(&Instruction::LocalSet(0)); // ptr -> local0
                         f.instruction(&Instruction::I32Const(0));
@@ -847,7 +1021,7 @@ impl Codegen {
                         f.instruction(&Instruction::I32Store(MemArg {
                             offset: 4,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                     },
                     |f| {
@@ -855,23 +1029,23 @@ impl Codegen {
                         f.instruction(&Instruction::I32Load(MemArg {
                             offset: 4,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Load(MemArg {
                             offset: 8,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Load(MemArg {
                             offset: 12,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                     },
                     |f| {
-                        f.instruction(&Instruction::Call(7));
+                        f.instruction(&Instruction::Call(import::DSLICE));
                     },
                 );
             }
@@ -886,14 +1060,14 @@ impl Codegen {
                         f.instruction(&Instruction::I32Store(MemArg {
                             offset: 4,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Const(len));
                         f.instruction(&Instruction::I32Store(MemArg {
                             offset: 8,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                     },
                     |f| {
@@ -901,17 +1075,17 @@ impl Codegen {
                         f.instruction(&Instruction::I32Load(MemArg {
                             offset: 4,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Load(MemArg {
                             offset: 8,
                             align: 2,
-                            memory_index: 2,
+                            memory_index: mem::SHADOW,
                         }));
                     },
                     |f| {
-                        f.instruction(&Instruction::Call(5));
+                        f.instruction(&Instruction::Call(import::DALLOC));
                     },
                 );
                 f.instruction(&Instruction::LocalTee(0));
@@ -923,7 +1097,7 @@ impl Codegen {
                     f.instruction(&Instruction::I64Store(MemArg {
                         offset: (i * 8) as u64,
                         align: 3,
-                        memory_index: 1,
+                        memory_index: mem::DALLOC,
                     }));
                 }
             }
@@ -940,73 +1114,17 @@ impl Codegen {
                 f.instruction(&Instruction::I64Load(MemArg {
                     offset: 0,
                     align: 3,
-                    memory_index: 1,
+                    memory_index: mem::DALLOC,
                 }));
             }
             IRExprKind::Match { .. } => todo!(),
             IRExprKind::UnwrapError(inside) => {
                 self.compile_expr(inside, f, false)?;
-                f.instruction(&Instruction::LocalTee(0));
-                f.instruction(&Instruction::I64Load(MemArg {
-                    offset: 0,
-                    align: 3,
-                    memory_index: 0,
-                }));
-                f.instruction(&Instruction::I64Const(1));
-                f.instruction(&Instruction::I64Eq);
-                if !expr.ty.nullable && !expr.ty.errorable {
-                    f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
-                        ValType::I64,
-                    )));
-                } else {
-                    f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
-                        ValType::I32,
-                    )));
-                }
-                f.instruction(&Instruction::Unreachable);
-                f.instruction(&Instruction::Else);
-                f.instruction(&Instruction::LocalGet(0));
-                if !expr.ty.nullable && !expr.ty.errorable {
-                    f.instruction(&Instruction::I64Load(MemArg {
-                        offset: 8,
-                        align: 3,
-                        memory_index: 0,
-                    }));
-                } else {
-                }
-                f.instruction(&Instruction::End);
+                Self::emit_unwrap(f, 1, &expr.ty);
             }
             IRExprKind::UnwrapNull(inside) => {
                 self.compile_expr(inside, f, false)?;
-                f.instruction(&Instruction::LocalTee(0));
-                f.instruction(&Instruction::I64Load(MemArg {
-                    offset: 0,
-                    align: 3,
-                    memory_index: 0,
-                }));
-                f.instruction(&Instruction::I64Const(0));
-                f.instruction(&Instruction::I64Eq);
-                if !expr.ty.nullable && !expr.ty.errorable {
-                    f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
-                        ValType::I64,
-                    )));
-                } else {
-                    f.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
-                        ValType::I32,
-                    )));
-                }
-                f.instruction(&Instruction::Unreachable);
-                f.instruction(&Instruction::Else);
-                f.instruction(&Instruction::LocalGet(0));
-                if !expr.ty.nullable && !expr.ty.errorable {
-                    f.instruction(&Instruction::I64Load(MemArg {
-                        offset: 8,
-                        align: 3,
-                        memory_index: 0,
-                    }));
-                } else {
-                }
-                f.instruction(&Instruction::End);
+                Self::emit_unwrap(f, 0, &expr.ty);
             }
         }
         Ok(())
@@ -1025,12 +1143,12 @@ impl Codegen {
                     TypeKind::Struct { .. } => {
                         f.instruction(&Instruction::I32Const((*index - 2) as i32));
                         f.instruction(&Instruction::I32Const(1));
-                        f.instruction(&Instruction::Call(16));
+                        f.instruction(&Instruction::Call(import::SHADOW_SET));
                     }
                     TypeKind::List { .. } | TypeKind::String => {
                         f.instruction(&Instruction::I32Const((*index - 2) as i32));
                         f.instruction(&Instruction::I32Const(2));
-                        f.instruction(&Instruction::Call(16));
+                        f.instruction(&Instruction::Call(import::SHADOW_SET));
                     }
                     _ => {
                         f.instruction(&Instruction::Drop);
@@ -1043,7 +1161,7 @@ impl Codegen {
                 } else {
                     f.instruction(&Instruction::I64Const(0));
                 }
-                f.instruction(&Instruction::Call(15));
+                f.instruction(&Instruction::Call(import::SHADOW_POP));
                 f.instruction(&Instruction::Return);
             }
             IRStmt::Break => {
@@ -1105,12 +1223,12 @@ impl Codegen {
             }
             IRStmt::Print(expr) => {
                 self.compile_expr(expr, f, false)?;
-                f.instruction(&Instruction::Call(0));
+                f.instruction(&Instruction::Call(import::PRINT));
             }
             IRStmt::Produce(_) => todo!(),
             IRStmt::Raise(expr) => {
                 self.compile_expr(expr, f, false)?;
-                f.instruction(&Instruction::Call(15));
+                f.instruction(&Instruction::Call(import::SHADOW_POP));
                 f.instruction(&Instruction::Return);
             }
             IRStmt::LocalClosure {
@@ -1132,7 +1250,7 @@ impl Codegen {
                                 f.instruction(&Instruction::I32Store(MemArg {
                                     offset: 4,
                                     align: 2,
-                                    memory_index: 2,
+                                    memory_index: mem::SHADOW,
                                 }));
                             },
                             |f| {
@@ -1140,11 +1258,11 @@ impl Codegen {
                                 f.instruction(&Instruction::I32Load(MemArg {
                                     offset: 4,
                                     align: 2,
-                                    memory_index: 2,
+                                    memory_index: mem::SHADOW,
                                 }));
                             },
                             |f| {
-                                f.instruction(&Instruction::Call(3));
+                                f.instruction(&Instruction::Call(import::FALLOC));
                             },
                         );
                         f.instruction(&Instruction::LocalTee(0));
@@ -1165,7 +1283,7 @@ impl Codegen {
                 f.instruction(&Instruction::LocalGet(0));
                 f.instruction(&Instruction::I32Const((*index - 2) as i32));
                 f.instruction(&Instruction::I32Const(1));
-                f.instruction(&Instruction::Call(16));
+                f.instruction(&Instruction::Call(import::SHADOW_SET));
                 f.instruction(&Instruction::LocalGet(0));
                 self.compile_expr(captures, f, true)?;
             }
