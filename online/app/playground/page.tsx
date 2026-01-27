@@ -41,6 +41,129 @@ const docs = {
   ],
 };
 
+const algorithms: Record<string, string> = {
+  "bubble sort": `fn main(): integer {
+    let arr: {integer} = {5, 3, 8, 1, 2, 7, 4, 6};
+    let n: integer = 8;
+    for let i: integer = 0; i < n; i = i + 1; {
+        for let j: integer = 0; j < n - i - 1; j = j + 1; {
+            if arr[j] > arr[j + 1] {
+                let temp: integer = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = temp;
+            }
+        }
+    }
+    for let i: integer = 0; i < n; i = i + 1; {
+        print $arr[i];
+    }
+    return 0;
+}`,
+  "binary search": `fn binary_search(arr: {integer}, n: integer, target: integer): integer {
+    let low: integer = 0;
+    let high: integer = n - 1;
+    while low <= high {
+        let mid: integer = low + (high - low) / 2;
+        if arr[mid] == target {
+            return mid;
+        }
+        if arr[mid] < target {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return 0 - 1;
+}
+
+fn main(): integer {
+    let arr: {integer} = {1, 3, 5, 7, 9, 11, 13, 15};
+    let result: integer = binary_search(arr, 8, 7);
+    print $result;
+    return 0;
+}`,
+  "merge sort": `fn merge(arr: {integer}, left: integer, mid: integer, right: integer): integer {
+    let temp: {integer} = {};
+    let i: integer = left;
+    let j: integer = mid + 1;
+    while i <= mid and j <= right {
+        if arr[i] <= arr[j] {
+            temp = temp + {arr[i]};
+            i = i + 1;
+        } else {
+            temp = temp + {arr[j]};
+            j = j + 1;
+        }
+    }
+    while i <= mid {
+        temp = temp + {arr[i]};
+        i = i + 1;
+    }
+    while j <= right {
+        temp = temp + {arr[j]};
+        j = j + 1;
+    }
+    for let k: integer = 0; k < right - left + 1; k = k + 1; {
+        arr[left + k] = temp[k];
+    }
+    return 0;
+}
+
+fn merge_sort(arr: {integer}, left: integer, right: integer): integer {
+    if left < right {
+        let mid: integer = left + (right - left) / 2;
+        merge_sort(arr, left, mid);
+        merge_sort(arr, mid + 1, right);
+        merge(arr, left, mid, right);
+    }
+    return 0;
+}
+
+fn main(): integer {
+    let arr: {integer} = {8, 3, 5, 1, 9, 2, 7, 4};
+    merge_sort(arr, 0, 7);
+    for let i: integer = 0; i < 8; i = i + 1; {
+        print $arr[i];
+    }
+    return 0;
+}`,
+  "fibonacci": `fn fibonacci(n: integer): integer {
+    if n <= 1 {
+        return n;
+    }
+    let a: integer = 0;
+    let b: integer = 1;
+    for let i: integer = 2; i <= n; i = i + 1; {
+        let temp: integer = a + b;
+        a = b;
+        b = temp;
+    }
+    return b;
+}
+
+fn main(): integer {
+    for let i: integer = 0; i < 10; i = i + 1; {
+        print $fibonacci(i);
+    }
+    return 0;
+}`,
+  "primes to n": `fn main(): integer {
+    let n: integer = 50;
+    for let i: integer = 2; i <= n; i = i + 1; {
+        let is_prime: boolean = true;
+        for let j: integer = 2; j * j <= i; j = j + 1; {
+            if i - (i / j) * j == 0 {
+                is_prime = false;
+            }
+        }
+        if is_prime {
+            print $i;
+        }
+    }
+    return 0;
+}`,
+};
+
 const demos: Record<string, string> = {
   "quickstart/intro": `fn main(): integer {
     print "hello";
@@ -153,6 +276,9 @@ fn main(): integer {
   const [isRunning, setIsRunning] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"docs" | "code">("docs");
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const commandInputRef = useRef<HTMLInputElement>(null);
 
   const compilerRef = useRef<WebAssembly.Instance | null>(null);
   const runtimeRef = useRef<RuntimeModules | null>(null);
@@ -209,6 +335,38 @@ fn main(): integer {
       setCode(demos[docPath]);
     }
   }, [docPath]);
+
+  // Command palette keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+        setCommandQuery("");
+      }
+      if (e.key === "Escape") {
+        setCommandPaletteOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (commandPaletteOpen && commandInputRef.current) {
+      commandInputRef.current.focus();
+    }
+  }, [commandPaletteOpen]);
+
+  const filteredAlgorithms = Object.keys(algorithms).filter((name) =>
+    name.toLowerCase().includes(commandQuery.toLowerCase())
+  );
+
+  const selectAlgorithm = (name: string) => {
+    setCode(algorithms[name]);
+    setCommandPaletteOpen(false);
+    setCommandQuery("");
+  };
 
   const handleRun = useCallback(async () => {
     if (!compilerRef.current || !runtimeRef.current) {
@@ -451,6 +609,45 @@ fn main(): integer {
           </div>
         </div>
       </div>
+
+      {/* command palette */}
+      {commandPaletteOpen && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[20vh]" onClick={() => setCommandPaletteOpen(false)}>
+          <div className="fixed inset-0 bg-black/50" />
+          <div
+            className="relative w-full max-w-md bg-[#1a1a1a] border border-[#333333] rounded-lg shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              ref={commandInputRef}
+              value={commandQuery}
+              onChange={(e) => setCommandQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && filteredAlgorithms.length > 0) {
+                  selectAlgorithm(filteredAlgorithms[0]);
+                }
+              }}
+              placeholder="Type an algorithm name..."
+              className="w-full px-4 py-3 bg-transparent border-b border-[#333333] outline-none text-sm font-mono"
+            />
+            <ul className="max-h-60 overflow-y-auto">
+              {filteredAlgorithms.map((name) => (
+                <li key={name}>
+                  <button
+                    onClick={() => selectAlgorithm(name)}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-[#333333] transition-colors"
+                  >
+                    {name}
+                  </button>
+                </li>
+              ))}
+              {filteredAlgorithms.length === 0 && (
+                <li className="px-4 py-2 text-sm text-[#888888]">no matching algorithms</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

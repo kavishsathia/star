@@ -224,6 +224,7 @@ impl Codegen {
                 f.instruction(&Instruction::LocalSet(*index));
                 f.instruction(&Instruction::LocalGet(0));
                 f.instruction(&Instruction::I32Const((*index - 2) as i32));
+                // BUG
                 f.instruction(&Instruction::I32Const(1));
                 f.instruction(&Instruction::Call(import::SHADOW_SET));
                 f.instruction(&Instruction::LocalGet(0));

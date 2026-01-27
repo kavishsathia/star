@@ -72,7 +72,7 @@ impl LocalsIndexer {
                 }
 
                 current_scope.insert(name, (index, captured));
-                // Don't push to locals_types_stack - params are already in WASM signature
+                // Don't push to locals_types_stack
                 return Ok(index);
             }
         }

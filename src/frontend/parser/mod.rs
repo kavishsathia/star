@@ -2,9 +2,9 @@ mod expr;
 mod stmt;
 mod types;
 
+use super::lexer::Token;
 use crate::ast::{BinaryOp, Expr, Program, Statement, Type, TypeKind, UnaryOp};
 use crate::error::CompilerError;
-use super::lexer::Token;
 use logos::Logos;
 
 pub struct Parser<'a> {
