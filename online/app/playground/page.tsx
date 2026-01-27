@@ -59,67 +59,67 @@ const algorithms: Record<string, string> = {
     }
     return 0;
 }`,
-  "binary search": `fn binary_search(arr: {integer}, n: integer, target: integer): integer {
-    let low: integer = 0;
-    let high: integer = n - 1;
-    while low <= high {
-        let mid: integer = low + (high - low) / 2;
-        if arr[mid] == target {
-            return mid;
+  "binary search": `fn main(): integer {
+    fn binary_search(arr: {integer}, n: integer, target: integer): integer {
+        let low: integer = 0;
+        let high: integer = n - 1;
+        while low <= high {
+            let mid: integer = low + (high - low) / 2;
+            if arr[mid] == target {
+                return mid;
+            }
+            if arr[mid] < target {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
         }
-        if arr[mid] < target {
-            low = mid + 1;
-        } else {
-            high = mid - 1;
-        }
+        return 0 - 1;
     }
-    return 0 - 1;
-}
 
-fn main(): integer {
     let arr: {integer} = {1, 3, 5, 7, 9, 11, 13, 15};
     let result: integer = binary_search(arr, 8, 7);
     print $result;
     return 0;
 }`,
-  "merge sort": `fn merge(arr: {integer}, left: integer, mid: integer, right: integer): integer {
-    let temp: {integer} = {};
-    let i: integer = left;
-    let j: integer = mid + 1;
-    while i <= mid and j <= right {
-        if arr[i] <= arr[j] {
+  "merge sort": `fn main(): integer {
+    fn merge(arr: {integer}, left: integer, mid: integer, right: integer): integer {
+        let temp: {integer} = {};
+        let i: integer = left;
+        let j: integer = mid + 1;
+        while i <= mid and j <= right {
+            if arr[i] <= arr[j] {
+                temp = temp + {arr[i]};
+                i = i + 1;
+            } else {
+                temp = temp + {arr[j]};
+                j = j + 1;
+            }
+        }
+        while i <= mid {
             temp = temp + {arr[i]};
             i = i + 1;
-        } else {
+        }
+        while j <= right {
             temp = temp + {arr[j]};
             j = j + 1;
         }
+        for let k: integer = 0; k < right - left + 1; k = k + 1; {
+            arr[left + k] = temp[k];
+        }
+        return 0;
     }
-    while i <= mid {
-        temp = temp + {arr[i]};
-        i = i + 1;
-    }
-    while j <= right {
-        temp = temp + {arr[j]};
-        j = j + 1;
-    }
-    for let k: integer = 0; k < right - left + 1; k = k + 1; {
-        arr[left + k] = temp[k];
-    }
-    return 0;
-}
 
-fn merge_sort(arr: {integer}, left: integer, right: integer): integer {
-    if left < right {
-        let mid: integer = left + (right - left) / 2;
-        merge_sort(arr, left, mid);
-        merge_sort(arr, mid + 1, right);
-        merge(arr, left, mid, right);
+    fn merge_sort(arr: {integer}, left: integer, right: integer): integer {
+        if left < right {
+            let mid: integer = left + (right - left) / 2;
+            merge_sort(arr, left, mid);
+            merge_sort(arr, mid + 1, right);
+            merge(arr, left, mid, right);
+        }
+        return 0;
     }
-    return 0;
-}
 
-fn main(): integer {
     let arr: {integer} = {8, 3, 5, 1, 9, 2, 7, 4};
     merge_sort(arr, 0, 7);
     for let i: integer = 0; i < 8; i = i + 1; {
@@ -127,21 +127,21 @@ fn main(): integer {
     }
     return 0;
 }`,
-  "fibonacci": `fn fibonacci(n: integer): integer {
-    if n <= 1 {
-        return n;
+  "fibonacci": `fn main(): integer {
+    fn fibonacci(n: integer): integer {
+        if n <= 1 {
+            return n;
+        }
+        let a: integer = 0;
+        let b: integer = 1;
+        for let i: integer = 2; i <= n; i = i + 1; {
+            let temp: integer = a + b;
+            a = b;
+            b = temp;
+        }
+        return b;
     }
-    let a: integer = 0;
-    let b: integer = 1;
-    for let i: integer = 2; i <= n; i = i + 1; {
-        let temp: integer = a + b;
-        a = b;
-        b = temp;
-    }
-    return b;
-}
 
-fn main(): integer {
     for let i: integer = 0; i < 10; i = i + 1; {
         print $fibonacci(i);
     }
