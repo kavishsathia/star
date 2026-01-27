@@ -593,6 +593,19 @@ fn main(): integer {
             <textarea
               value={code}
               onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Tab") {
+                  e.preventDefault();
+                  const target = e.currentTarget;
+                  const start = target.selectionStart;
+                  const end = target.selectionEnd;
+                  const newCode = code.substring(0, start) + "    " + code.substring(end);
+                  setCode(newCode);
+                  requestAnimationFrame(() => {
+                    target.selectionStart = target.selectionEnd = start + 4;
+                  });
+                }
+              }}
               className="flex-1 bg-transparent p-3 sm:p-4 resize-none outline-none font-mono text-xs sm:text-sm min-h-50 lg:min-h-0"
               spellCheck={false}
             />

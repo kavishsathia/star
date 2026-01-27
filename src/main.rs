@@ -4,21 +4,20 @@ use std::time::Instant;
 
 fn main() {
     let source = r#"
-error Hello;
 fn main(): integer {
-    let hello: integer = 42;
-    fn maybe(): (:string)?! {
-    
-        fn run(): string {
-            return $hello;
-        }   
-        
-        return run;
+    fn add(x: integer, y: integer): integer {
+        return x + y;
     }
 
-    print maybe()!!??();
-return 0;
+    fn mult(x: integer, y: integer): integer {
+        return x * y;
+    }
+    
+    print $(10 + add(add(1, mult(3, 4)), 2));
+    return 0;
 }
+
+
     "#;
 
     println!("Compiling...\n");

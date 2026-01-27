@@ -425,16 +425,20 @@ impl Codegen {
                 f.instruction(&Instruction::I64Const(0));
                 self.compile_expr(callee, f, false)?;
                 f.instruction(&Instruction::LocalTee(1));
+                f.instruction(&Instruction::I32WrapI64);
                 f.instruction(&Instruction::LocalGet(1));
                 f.instruction(&Instruction::I64Const(32));
                 f.instruction(&Instruction::I64ShrU);
                 f.instruction(&Instruction::I32WrapI64);
-                f.instruction(&Instruction::LocalSet(0));
-                f.instruction(&Instruction::I32WrapI64);
                 for arg in args {
                     self.compile_expr(arg, f, false)?;
+                    emit_storage_cast(f, &arg.ty.kind);
+                    f.instruction(&Instruction::LocalSet(1));
+                    f.instruction(&Instruction::LocalSet(0));
+                    f.instruction(&Instruction::LocalGet(1));
+                    emit_access_cast(f, &arg.ty.kind);
+                    f.instruction(&Instruction::LocalGet(0));
                 }
-                f.instruction(&Instruction::LocalGet(0));
 
                 f.instruction(&Instruction::CallIndirect {
                     type_index,
