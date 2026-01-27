@@ -147,6 +147,30 @@ fn main(): integer {
     }
     return 0;
 }`,
+  "linked list": `struct Node {
+    next: Node?,
+    content: integer
+}
+
+fn main(): integer {
+    let list: Node = new Node {
+        next: new Node {
+            next: new Node {
+                next: null,
+                content: 0
+            },
+            content: 2
+        },
+        content: 1
+    };
+
+    while list.content != 0 {
+        print $list.content;
+        list = list.next??;
+    }
+
+    return 0;
+}`,
   "primes to n": `fn main(): integer {
     let n: integer = 50;
     for let i: integer = 2; i <= n; i = i + 1; {
