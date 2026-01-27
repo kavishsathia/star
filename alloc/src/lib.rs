@@ -13,7 +13,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 #[no_mangle]
 pub extern "C" fn alloc_memory_size() -> u32 {
-    (core::arch::wasm32::memory_size(0) as u32) * 65536
+    (core::arch::wasm32::memory_size(0) as u32) * 65336
 }
 
 unsafe fn read_u32(addr: u32) -> u32 {

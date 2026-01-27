@@ -111,7 +111,7 @@ pub extern "C" fn mark_pointer(pointer: u32, memory: u32) {
             return;
         }
         if memory == 1 {
-            if pointer < alloc_memory_size() - 400 && read_alloc(pointer - 4) != 1 {
+            if pointer < alloc_memory_size() && read_alloc(pointer - 4) != 1 {
                 let ty = read_alloc(pointer - 8);
 
                 write_alloc(pointer - 4, 1);
@@ -131,8 +131,7 @@ pub extern "C" fn mark_pointer(pointer: u32, memory: u32) {
                 }
             }
         } else {
-            // TODO: Handle 400
-            if pointer < dalloc_memory_size() - 400 && read_dalloc(pointer - 12) != 1 {
+            if pointer < dalloc_memory_size() && read_dalloc(pointer - 12) != 1 {
                 let length = read_dalloc(pointer - 4);
                 let ty = read_dalloc(pointer - 16);
 
