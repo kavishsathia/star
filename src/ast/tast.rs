@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Pattern, Type, UnaryOp};
+use super::ast::{BinaryOp, Pattern, Type, UnaryOp};
 
 #[derive(Debug)]
 pub struct TypedProgram {

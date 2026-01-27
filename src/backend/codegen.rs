@@ -1,6 +1,6 @@
 use crate::ast::{BinaryOp, Type, TypeKind, UnaryOp};
+use crate::ast::{IRExpr, IRExprKind, IRFunction, IRProgram, IRStmt, IRStruct};
 use crate::error::CompilerError;
-use crate::ir::{IRExpr, IRExprKind, IRFunction, IRProgram, IRStmt, IRStruct};
 use wasm_encoder::{
     CodeSection, ConstExpr, ElementSection, Elements, EntityType, ExportSection, Function,
     FunctionSection, ImportSection, Instruction, MemArg, Module, RefType, TableSection, TableType,

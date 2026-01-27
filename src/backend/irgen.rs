@@ -1,8 +1,7 @@
-use crate::aast::{AnalyzedExpr, AnalyzedStatement, Expr};
-use crate::ast::{BinaryOp, Pattern, Type};
+use crate::ast::aast::{AnalyzedExpr, AnalyzedStatement, Expr};
+use crate::ast::{BinaryOp, Pattern, Type, FlattenedProgram};
+use crate::ast::{IRExpr, IRFunction, IRPattern, IRProgram, IRStmt, IRStruct, IRExprKind, IRStructKind};
 use crate::error::CompilerError;
-use crate::fast::FlattenedProgram;
-use crate::ir::{IRExpr, IRFunction, IRPattern, IRProgram, IRStmt, IRStruct};
 
 pub struct IRGenerator {
     structs: Vec<IRStruct>,
@@ -48,7 +47,7 @@ impl IRGenerator {
                     offsets,
                     struct_count: *struct_count,
                     list_count: *list_count,
-                    kind: crate::ir::IRStructKind::Captures,
+                    kind: IRStructKind::Captures,
                 })
             }
             _ => Err(CompilerError::IRGen {
@@ -105,7 +104,7 @@ impl IRGenerator {
                 let ir_value = match value {
                     Some(v) => self.lower_expr(v)?,
                     None => IRExpr {
-                        node: crate::ir::IRExprKind::Null,
+                        node: IRExprKind::Null,
                         ty: ty.clone(),
                     },
                 };
@@ -234,27 +233,27 @@ impl IRGenerator {
     fn lower_expr(&mut self, expr: &AnalyzedExpr) -> Result<IRExpr, CompilerError> {
         match &expr.expr {
             Expr::Null => Ok(IRExpr {
-                node: crate::ir::IRExprKind::Null,
+                node: IRExprKind::Null,
                 ty: expr.ty.clone(),
             }),
             Expr::Integer(val) => Ok(IRExpr {
-                node: crate::ir::IRExprKind::Integer(*val),
+                node: IRExprKind::Integer(*val),
                 ty: expr.ty.clone(),
             }),
             Expr::Float(val) => Ok(IRExpr {
-                node: crate::ir::IRExprKind::Float(*val),
+                node: IRExprKind::Float(*val),
                 ty: expr.ty.clone(),
             }),
             Expr::String(val) => Ok(IRExpr {
-                node: crate::ir::IRExprKind::String(val.clone()),
+                node: IRExprKind::String(val.clone()),
                 ty: expr.ty.clone(),
             }),
             Expr::Boolean(val) => Ok(IRExpr {
-                node: crate::ir::IRExprKind::Boolean(*val),
+                node: IRExprKind::Boolean(*val),
                 ty: expr.ty.clone(),
             }),
             Expr::Identifier { name, index } => Ok(IRExpr {
-                node: crate::ir::IRExprKind::Local(index.unwrap()),
+                node: IRExprKind::Local(index.unwrap()),
                 ty: expr.ty.clone(),
             }),
             Expr::List(elements) => {
@@ -263,7 +262,7 @@ impl IRGenerator {
                     ir_elements.push(self.lower_expr(e)?);
                 }
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::List(ir_elements),
+                    node: IRExprKind::List(ir_elements),
                     ty: expr.ty.clone(),
                 })
             }
@@ -277,7 +276,7 @@ impl IRGenerator {
                 };
                 let offset = self.get_field_offset(struct_name, field)?;
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::Field {
+                    node: IRExprKind::Field {
                         object: Box::new(ir_object),
                         offset,
                     },
@@ -288,7 +287,7 @@ impl IRGenerator {
                 let ir_object = self.lower_expr(object)?;
                 let ir_key = self.lower_expr(key)?;
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::Index {
+                    node: IRExprKind::Index {
                         list: Box::new(ir_object),
                         index: Box::new(ir_key),
                     },
@@ -300,7 +299,7 @@ impl IRGenerator {
                 let ir_start = self.lower_expr(start)?;
                 let ir_end = self.lower_expr(end)?;
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::Slice {
+                    node: IRExprKind::Slice {
                         expr: Box::new(ir_expr),
                         start: Box::new(ir_start),
                         end: Box::new(ir_end),
@@ -330,7 +329,7 @@ impl IRGenerator {
                 }
 
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::New {
+                    node: IRExprKind::New {
                         struct_index,
                         fields: ir_fields,
                     },
@@ -346,7 +345,7 @@ impl IRGenerator {
                     let ir_left = self.lower_expr(left)?;
                     let ir_right = self.lower_expr(right)?;
                     Ok(IRExpr {
-                        node: crate::ir::IRExprKind::Binary {
+                        node: IRExprKind::Binary {
                             left: Box::new(ir_left),
                             op: BinaryOp::Is,
                             right: Box::new(ir_right),
@@ -364,7 +363,7 @@ impl IRGenerator {
                     };
                     let offset = self.get_field_offset(struct_name, &field)?;
                     let ir_left = IRExpr {
-                        node: crate::ir::IRExprKind::FieldReference {
+                        node: IRExprKind::FieldReference {
                             object: Box::new(ir_object),
                             offset,
                         },
@@ -372,7 +371,7 @@ impl IRGenerator {
                     };
                     let ir_right = self.lower_expr(right)?;
                     Ok(IRExpr {
-                        node: crate::ir::IRExprKind::Binary {
+                        node: IRExprKind::Binary {
                             left: Box::new(ir_left),
                             op: BinaryOp::Is,
                             right: Box::new(ir_right),
@@ -384,7 +383,7 @@ impl IRGenerator {
                     let ir_object = self.lower_expr(object)?;
                     let ir_key = self.lower_expr(key)?;
                     let ir_left = IRExpr {
-                        node: crate::ir::IRExprKind::IndexReference {
+                        node: IRExprKind::IndexReference {
                             list: Box::new(ir_object),
                             index: Box::new(ir_key),
                         },
@@ -392,7 +391,7 @@ impl IRGenerator {
                     };
                     let ir_right = self.lower_expr(right)?;
                     Ok(IRExpr {
-                        node: crate::ir::IRExprKind::Binary {
+                        node: IRExprKind::Binary {
                             left: Box::new(ir_left),
                             op: BinaryOp::Is,
                             right: Box::new(ir_right),
@@ -408,7 +407,7 @@ impl IRGenerator {
                 let ir_left = self.lower_expr(left)?;
                 let ir_right = self.lower_expr(right)?;
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::Binary {
+                    node: IRExprKind::Binary {
                         left: Box::new(ir_left),
                         op: op.clone(),
                         right: Box::new(ir_right),
@@ -419,7 +418,7 @@ impl IRGenerator {
             Expr::Unary { op, expr: inner } => {
                 let ir_inner = self.lower_expr(inner)?;
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::Unary {
+                    node: IRExprKind::Unary {
                         op: op.clone(),
                         expr: Box::new(ir_inner),
                     },
@@ -433,7 +432,7 @@ impl IRGenerator {
                     ir_args.push(self.lower_expr(a)?);
                 }
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::Call {
+                    node: IRExprKind::Call {
                         callee: Box::new(ir_callee),
                         args: ir_args,
                     },
@@ -444,14 +443,14 @@ impl IRGenerator {
             Expr::UnwrapError(inner) => {
                 let ir_inner = self.lower_expr(inner)?;
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::UnwrapError(Box::new(ir_inner)),
+                    node: IRExprKind::UnwrapError(Box::new(ir_inner)),
                     ty: expr.ty.clone(),
                 })
             }
             Expr::UnwrapNull(inner) => {
                 let ir_inner = self.lower_expr(inner)?;
                 Ok(IRExpr {
-                    node: crate::ir::IRExprKind::UnwrapNull(Box::new(ir_inner)),
+                    node: IRExprKind::UnwrapNull(Box::new(ir_inner)),
                     ty: expr.ty.clone(),
                 })
             }

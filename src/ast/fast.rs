@@ -1,4 +1,4 @@
-use crate::aast::AnalyzedStatement;
+use super::aast::AnalyzedStatement;
 
 #[derive(Debug)]
 pub struct FlattenedProgram {

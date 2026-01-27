@@ -1,6 +1,6 @@
 use super::{TypeChecker, TypeError};
 use crate::ast::{self, Type, TypeKind};
-use crate::tast::{self, TypedProgram, TypedStatement};
+use crate::ast::tast::{self, TypedProgram, TypedStatement};
 
 impl TypeChecker {
     pub fn check_stmt(&mut self, stmt: &ast::Statement) -> Result<TypedStatement, TypeError> {

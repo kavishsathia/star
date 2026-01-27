@@ -1,7 +1,7 @@
-use crate::aast::{AnalyzedExpr, AnalyzedStatement, Expr};
+use crate::ast::aast::{AnalyzedExpr, AnalyzedStatement, Expr};
 use crate::ast::{BinaryOp, Type, TypeKind, UnaryOp};
 use crate::error::CompilerError;
-use crate::fast::FlattenedProgram;
+use crate::ast::FlattenedProgram;
 use std::collections::HashMap;
 
 pub struct Wrapper {

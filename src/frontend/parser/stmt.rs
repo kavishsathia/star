@@ -1,6 +1,6 @@
 use crate::ast::Statement;
 use crate::error::CompilerError;
-use crate::lexer::Token;
+use crate::frontend::lexer::Token;
 use super::Parser;
 
 impl<'a> Parser<'a> {

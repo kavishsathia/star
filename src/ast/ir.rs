@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Type, UnaryOp};
+use super::ast::{BinaryOp, Type, UnaryOp};
 
 #[derive(Debug)]
 pub struct IRProgram {

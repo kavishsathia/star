@@ -1,7 +1,7 @@
-use crate::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
+use crate::ast::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
 use crate::ast::{Type, TypeKind};
 use crate::error::CompilerError;
-use crate::tast::{self, TypedExpr, TypedProgram, TypedStatement};
+use crate::ast::tast::{self, TypedExpr, TypedProgram, TypedStatement};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub struct LocalsIndexer {

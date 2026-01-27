@@ -1,6 +1,6 @@
 use super::{TypeChecker, TypeError};
 use crate::ast::{self, Type, TypeKind};
-use crate::tast::{self, TypedExpr};
+use crate::ast::tast::{self, TypedExpr};
 
 impl TypeChecker {
     pub fn check_expr(&mut self, expr: &ast::Expr) -> Result<TypedExpr, TypeError> {

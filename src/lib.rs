@@ -1,26 +1,17 @@
-mod aast;
-mod ast;
-mod codegen;
+pub mod ast;
 pub mod error;
-mod fast;
-mod flatten;
-mod ir;
-mod irgen;
-mod lexer;
-mod locals;
-mod parser;
-mod tast;
-mod types;
-mod wrap;
+mod frontend;
+mod analysis;
+mod transforms;
+mod backend;
 
-use codegen::Codegen;
+use backend::Codegen;
 use error::CompilerError;
-use flatten::Flattener;
-use irgen::IRGenerator;
-use locals::LocalsIndexer;
-use parser::Parser;
-use types::TypeChecker;
-use wrap::Wrapper;
+use transforms::{Flattener, Wrapper};
+use backend::IRGenerator;
+use analysis::LocalsIndexer;
+use frontend::Parser;
+use analysis::TypeChecker;
 
 /// Compiles Star source code to WASM bytes.
 /// Returns Ok(wasm_bytes) on success, Err(CompilerError) on failure.

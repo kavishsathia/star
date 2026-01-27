@@ -1,6 +1,6 @@
-use crate::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
+use crate::ast::aast::{self, AnalyzedExpr, AnalyzedProgram, AnalyzedStatement};
 use crate::ast::{Type, TypeKind};
-use crate::fast::FlattenedProgram;
+use crate::ast::FlattenedProgram;
 
 pub fn segregate_fields(fields: Vec<(String, Type)>) -> (Vec<(String, Type)>, u32, u32) {
     let mut struct_ptrs = vec![];

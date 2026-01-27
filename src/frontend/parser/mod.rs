@@ -4,7 +4,7 @@ mod types;
 
 use crate::ast::{BinaryOp, Expr, Program, Statement, Type, TypeKind, UnaryOp};
 use crate::error::CompilerError;
-use crate::lexer::Token;
+use super::lexer::Token;
 use logos::Logos;
 
 pub struct Parser<'a> {

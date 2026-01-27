@@ -1,7 +1,7 @@
 use super::Parser;
 use crate::ast::{Expr, Pattern, UnaryOp};
 use crate::error::CompilerError;
-use crate::lexer::Token;
+use crate::frontend::lexer::Token;
 
 impl<'a> Parser<'a> {
     pub fn parse_expression(&mut self, min_bp: u8) -> Result<Expr, CompilerError> {
